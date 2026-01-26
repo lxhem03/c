@@ -104,19 +104,19 @@ class TaskListener(TaskConfig):
         if self.bot_pm and self.is_super_chat:
             self.pm_msg = await send_message(
                 self.user_id,
-                f"""➲ <b><u>Task Started :</u></b>
+                f"""<blockquote>➲ <b><u>Task Started :</u></b>
 ┃
-┖ <b>Link:</b> <a href='{self.source_url}'>Click Here</a>
+┖ <b>Link:</b> <a href='{self.source_url}'>Click Here</a></blockquote>
 """,
             )
         if Config.LINKS_LOG_ID:
             await send_message(
                 Config.LINKS_LOG_ID,
-                f"""➲  <b><u>{mode_name} Started:</u></b>
+                f"""<blockquote>➲  <b><u>{mode_name} Started:</u></b>
  ┃
  ┠ <b>User :</b> {self.tag} ( #ID{self.user_id} )
  ┠ <b>Message Link :</b> <a href='{self.message.link}'>Click Here</a>
- ┗ <b>Link:</b> <a href='{self.source_url}'>Click Here</a>
+ ┗ <b>Link:</b> <a href='{self.source_url}'>Click Here</a></blockquote>
  """,
             )
         if (
@@ -404,7 +404,7 @@ class TaskListener(TaskConfig):
         ):
             await database.rm_complete_task(self.message.link)
         msg = (
-            f"<b><i>{escape(self.name)}</i></b>\n│"
+            f"<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>\n\n<blockquote><b><i>{escape(self.name)}</i></b>\n│"
             f"\n┟ <b>Task Size</b> → {get_readable_file_size(self.size)}"
             f"\n┠ <b>Time Taken</b> → {get_readable_time(time() - self.message.date.timestamp())}"
             f"\n┠ <b>In Mode</b> → {self.mode[0]}"
@@ -427,7 +427,7 @@ class TaskListener(TaskConfig):
                     f"{self.tag}\nYour video has been uploaded to YouTube successfully!"
                 )
 
-            msg += f"\n\n<b>Task By: </b>{self.tag}"
+            msg += f"\n\n<b>Task By: </b>{self.tag}</blockquote>"
 
             button = buttons.build_menu(1) if link else None
 
@@ -440,12 +440,12 @@ class TaskListener(TaskConfig):
             msg += f"\n<b>Total Files: </b>{folders}"
             if mime_type != 0:
                 msg += f"\n┠ <b>Corrupted Files</b> → {mime_type}"
-            msg += f"\n┖ <b>Task By</b> → {self.tag}\n\n"
+            msg += f"\n┖ <b>Task By</b> ~ {self.tag}</blockquote>\n\n"
 
             if self.bot_pm:
                 pmsg = msg
                 pmsg += "〶 <b><u>Action Performed :</u></b>\n"
-                pmsg += "⋗ <i>File(s) have been sent to User PM</i>\n\n"
+                pmsg += "⋗ <i>File(s) have been sent to User PM</i></blockquote>\n\n"
                 if self.is_super_chat:
                     await send_message(self.message, pmsg)
 
@@ -457,14 +457,14 @@ class TaskListener(TaskConfig):
                 fmsg = ""
                 for index, (link, name) in enumerate(files.items(), start=1):
                     chat_id, msg_id = link.split("/")[-2:]
-                    fmsg += f"{index}. <a href='{link}'>{name}</a>"
+                    fmsg += f"<blockquote>{index}. <a href='{link}'>{name}</a>"
                     if Config.MEDIA_STORE and (
                         self.is_super_chat or Config.LEECH_DUMP_CHAT
                     ):
                         if chat_id.isdigit():
                             chat_id = f"-100{chat_id}"
                         flink = f"https://t.me/{TgClient.BNAME}?start={encode_slink('file' + chat_id + '&&' + msg_id)}"
-                        fmsg += f"\n┖ <b>Get Media</b> → <a href='{flink}'>Store Link</a> | <a href='https://t.me/share/url?url={flink}'>Share Link</a>"
+                        fmsg += f"\n┖ <b>Get Media</b> ~ <a href='{flink}'>Store Link</a> | <a href='https://t.me/share/url?url={flink}'>Share Link</a></blockquote>"
                     fmsg += "\n"
                     if len(fmsg.encode() + msg.encode()) > 4000:
                         await send_message(log_chat, msg + fmsg)

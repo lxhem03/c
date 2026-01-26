@@ -232,7 +232,7 @@ async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=
             msg += f"\n┖ <b>Sub Name</b> ~ <i>{task.listener.subname}</i>"
         elapsed = time() - task.listener.message.date.timestamp()
 
-        msg += f"\n\n<b>Task By {task.listener.message.from_user.mention(style='html')} </b> ( #ID{task.listener.message.from_user.id} )"
+        msg += f"\n<b>Task By {task.listener.message.from_user.mention(style='html')} </b> ( #ID{task.listener.message.from_user.id} )"
         if task.listener.is_super_chat:
             msg += f" <i>[<a href='{task.listener.message.link}'>Link</a>]</i>"
 
@@ -277,7 +277,7 @@ async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=
         # TODO: Add Bt Sel
         from ..telegram_helper.bot_commands import BotCommands
 
-        msg += f"\n<b>┖ Stop</b> ~ <i>/{BotCommands.CancelTaskCommand[1]}_{task.gid()}</i>\n<b>☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰</b>\n\n"
+        msg += f"\n<b>┖</b> <i>/{BotCommands.CancelTaskCommand[1]}_{task.gid()}</i>\n<b>☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰☰</b>\n\n"
 
     if len(msg) == 0:
         if status == "All":
@@ -302,5 +302,5 @@ async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=
                 buttons.data_button(label, f"status {sid} st {status_value}")
     buttons.data_button("♻️ Refresh", f"status {sid} ref", position="header")
     button = buttons.build_menu(8)
-    msg += f"<blockquote>\n┟ <b>CPU</b> → {cpu_percent()}% | <b>F</b> → {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)} [{round(100 - disk_usage(DOWNLOAD_DIR).percent, 1)}%]\n┖ <b>RAM</b> → {virtual_memory().percent}% | <b>UP</b> → {get_readable_time(time() - bot_start_time)}</blockquote>"
+    msg += f"<blockquote>\n┟ <b>CPU</b> ~ {cpu_percent()}% | <b>RAM</b> ~ {virtual_memory().percent}%\n┟ <b>F</b> ~ {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)} [{round(100 - disk_usage(DOWNLOAD_DIR).percent, 1)}%]\n┖ <b>UP</b> → {get_readable_time(time() - bot_start_time)}</blockquote>"
     return msg, button

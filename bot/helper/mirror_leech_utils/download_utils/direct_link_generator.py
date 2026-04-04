@@ -7,7 +7,7 @@ from os import path as ospath
 from re import findall, match, search
 from requests import Session, post, get, RequestException
 from requests.adapters import HTTPAdapter
-from time import sleep
+from time import sleep, time
 from urllib.parse import parse_qs, urlparse, quote
 from urllib3.util.retry import Retry
 from uuid import uuid4
@@ -18,6 +18,9 @@ from ...ext_utils.exceptions import DirectDownloadLinkException
 from ...ext_utils.help_messages import PASSWORD_ERROR_MESSAGE
 from ...ext_utils.links_utils import is_share_link
 from ...ext_utils.status_utils import speed_string_to_bytes
+
+# GoFile token cache to avoid rate limiting
+gofile_token_cache = None
 
 user_agent = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0"
@@ -693,11 +696,11 @@ def pixeldrain(url):
     try:
         url = url.rstrip("/")
         code = url.split("/")[-1].split("?", 1)[0]
-        response = get("https://pd.cybar.xyz/", allow_redirects=True)
+        response = get(f"https://{url.split('/')[2]}/api/file/", allow_redirects=True)
         return response.url + code
     except Exception as e:
         raise DirectDownloadLinkException("ERROR: Direct link not found")
-
+        
 
 def streamtape(url):
     splitted_url = url.split("/")
@@ -1185,30 +1188,57 @@ def gofile(url):
         raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
 
     def __get_token(session):
+        global gofile_token_cache
         headers = {
             "User-Agent": user_agent,
             "Accept-Encoding": "gzip, deflate, br",
             "Accept": "*/*",
             "Connection": "keep-alive",
         }
+        # Try to use cached token first
+        if gofile_token_cache:
+            # Validate cached token by making a test request
+            try:
+                test_headers = {
+                    "User-Agent": user_agent,
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Accept": "*/*",
+                    "Connection": "keep-alive",
+                    "Authorization": "Bearer" + " " + gofile_token_cache,
+                }
+                test_res = session.get(
+                    "https://api.gofile.io/accounts/website",
+                    headers=test_headers,
+                ).json()
+                if test_res.get("status") == "ok":
+                    return gofile_token_cache
+            except Exception:
+                pass  # Token invalid, will create new one
+        
+        # Create new account if no valid cached token
         __url = "https://api.gofile.io/accounts"
         try:
             __res = session.post(__url, headers=headers).json()
             if __res["status"] != "ok":
                 raise DirectDownloadLinkException("ERROR: Failed to get token.")
-            return __res["data"]["token"]
+            gofile_token_cache = __res["data"]["token"]
+            return gofile_token_cache
         except Exception as e:
             raise e
 
-    def __fetch_links(session, _id, folderPath=""):
+    def __fetch_links(session, _id, folderPath="", retry=True):
         _url = f"https://api.gofile.io/contents/{_id}?cache=true"
+        time_slot = int(time()) // 14400
+        raw = f"{user_agent}::en-US::{token}::{time_slot}::5d4f7g8sd45fsd"
+        wt = sha256(raw.encode()).hexdigest()
         headers = {
             "User-Agent": user_agent,
             "Accept-Encoding": "gzip, deflate, br",
             "Accept": "*/*",
             "Connection": "keep-alive",
             "Authorization": "Bearer" + " " + token,
-            "X-Website-Token": "4fd6sg89d7s6",
+            "X-Website-Token": wt,
+            "X-BL": "en-US"
         }
         if _password:
             _url += f"&password={_password}"
@@ -1216,6 +1246,26 @@ def gofile(url):
             _json = session.get(_url, headers=headers).json()
         except Exception as e:
             raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
+        
+        # Handle token/auth errors - clear cache and retry once
+        if _json.get("status") in ["error-unauth", "error-forbidden", "error-tokenInvalid"]:
+            global gofile_token_cache
+            gofile_token_cache = None  # Clear invalid token
+            if retry:
+                # Get new token and retry
+                try:
+                    new_token = __get_token(session)
+                    # Update headers with new token
+                    headers["Authorization"] = "Bearer" + " " + new_token
+                    _json = session.get(_url, headers=headers).json()
+                    # Update details header with new token for return value
+                    nonlocal details
+                    details["header"] = f"Cookie: accountToken={new_token}"
+                except Exception:
+                    raise DirectDownloadLinkException("ERROR: GoFile token revoked and failed to create new token.")
+            else:
+                raise DirectDownloadLinkException("ERROR: GoFile token revoked.")
+        
         if _json["status"] in "error-passwordRequired":
             raise DirectDownloadLinkException(
                 f"ERROR:\n{PASSWORD_ERROR_MESSAGE.format(url)}"
@@ -1243,7 +1293,7 @@ def gofile(url):
                     newFolderPath = ospath.join(details["title"], content["name"])
                 else:
                     newFolderPath = ospath.join(folderPath, content["name"])
-                __fetch_links(session, content["id"], newFolderPath)
+                __fetch_links(session, content["id"], newFolderPath, retry=False)
             else:
                 if not folderPath:
                     folderPath = details["title"]

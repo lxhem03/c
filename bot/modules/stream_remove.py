@@ -425,10 +425,23 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
                 *cmd, stdout=PIPE, stderr=PIPE
             )
 
-            # Run progress reader alongside the process; communicate() drains stderr
+            # _ffmpeg_progress() reads stdout via readline().
+            # communicate() also tries to read stdout → RuntimeError: two readers.
+            # Fix: drain stderr separately, use wait() for the process,
+            # and let _ffmpeg_progress() own stdout entirely.
+            stderr_chunks = []
+
+            async def _drain_stderr():
+                while True:
+                    chunk = await listener.subproc.stderr.read(4096)
+                    if not chunk:
+                        break
+                    stderr_chunks.append(chunk)
+
             await async_gather(
                 ffmpeg._ffmpeg_progress(),
-                listener.subproc.communicate(),
+                _drain_stderr(),
+                listener.subproc.wait(),
             )
             returncode = listener.subproc.returncode
 
@@ -437,8 +450,10 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
                 await aio_rename(out_path, f_path)
                 listener.proceed_count = file_index  # mark done
             else:
+                err_msg = b"".join(stderr_chunks).decode(errors="replace").strip()
                 LOGGER.error(
                     f"StreamRemove ffmpeg failed (code {returncode}) for: {f_path}"
+                    + (f"\n{err_msg}" if err_msg else "")
                 )
                 try:
                     if await aiopath.exists(out_path):

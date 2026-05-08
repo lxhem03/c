@@ -119,6 +119,9 @@ def add_handlers():
         CallbackQueryHandler(confirm_selection, filters=regex("^sel"))
     )
     TgClient.bot.add_handler(
+        CallbackQueryHandler(stream_remove_callback, filters=regex("^sr "))
+    )
+    TgClient.bot.add_handler(
         MessageHandler(
             remove_from_queue,
             filters=command(BotCommands.ForceStartCommand, case_sensitive=True)

@@ -36,6 +36,8 @@ class MirrorStatus:
     STATUS_FFMPEG = "FFmpeg"
     STATUS_YT = "YouTube"
     STATUS_METADATA = "Metadata"
+    STATUS_STREAMWAIT = "StreamWait"
+    STATUS_STREAMRM = "StreamRm"
 
 
 class EngineStatus:
@@ -75,6 +77,8 @@ STATUSES = {
     "FF": MirrorStatus.STATUS_FFMPEG,
     "PA": MirrorStatus.STATUS_PAUSED,
     "CK": MirrorStatus.STATUS_CHECK,
+    "SR": MirrorStatus.STATUS_STREAMRM,
+    "SW": MirrorStatus.STATUS_STREAMWAIT,
 }
 
 

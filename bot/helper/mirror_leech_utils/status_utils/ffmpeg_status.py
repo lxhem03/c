@@ -43,6 +43,8 @@ class FFmpegStatus:
             return MirrorStatus.STATUS_SPLIT
         elif self._cstatus == "Sample Video":
             return MirrorStatus.STATUS_SAMVID
+        elif self._cstatus == "StreamRemove":
+            return MirrorStatus.STATUS_STREAMRM
         else:
             return MirrorStatus.STATUS_FFMPEG
 

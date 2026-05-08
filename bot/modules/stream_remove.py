@@ -240,10 +240,9 @@ async def prompt_stream_remove(listener, dl_path: str, gid: str) -> str:
     )
 
     session = StreamRemoveSession(listener, tracks, ui_msg)
-    register_stream_remove_session(listener.mid)
+    register_stream_remove_session(session)
 
     # Now re-edit with real buttons
-    _sessions[listener.mid] = session
     await edit_message(ui_msg, msg_text, session.build_markup())
 
     # Wait for user to press Done or Cancel

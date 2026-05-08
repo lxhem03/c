@@ -155,6 +155,8 @@ def arg_parser(items, arg_base):
         "-ut",
         "-bt",
         "-yt",
+        "-sr",
+        "-streamremove",
     }
     if Config.DISABLE_BULK and "-b" in items:
         arg_base["-b"] = False

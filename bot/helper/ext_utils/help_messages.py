@@ -131,6 +131,21 @@ extract_zip = """<b>Extract/Zip</b>: -e -z
 /cmd link -z password -e (extract and zip password protected)
 Note: When both extract and zip added with cmd it will extract first and then zip, so always extract first"""
 
+stream_remove = """<b>Stream Remove</b>: -sr | -streamremove
+
+Remove specific audio or subtitle tracks from media files before upload.
+After download completes, the bot will display all available audio/subtitle
+streams with inline buttons. Select the streams you want to remove, then
+press Done. The selected streams are stripped from ALL files in the download.
+
+Examples:
+/cmd link -sr
+/cmd link -e -sr  (extract first, then remove streams)
+/cmd link -sr -z  (remove streams, then zip)
+
+For multi-file downloads (torrents, folders), the same stream indices
+are removed from every media file automatically."""
+
 join = """<b>Join Splitted Files</b>: -j
 
 This option will only work before extract and zip, so mostly it will be used with -m argument (samedir)
@@ -314,6 +329,7 @@ MIRROR_HELP_DICT = {
     "DL-Auth": "<b>Direct link authorization</b>: -au -ap\n\n/cmd link -au username -ap password",
     "Headers": "<b>Direct link custom headers</b>: -h\n\n/cmd link -h key: value key1: value1",
     "Extract/Zip": extract_zip,
+    "Stream-Remove": stream_remove,
     "Select-Files": "<b>Bittorrent/JDownloader/Sabnzbd File Selection</b>: -s\n\n/cmd link -s or by replying to file/link",
     "Torrent-Seed": seed,
     "Multi-Link": multi_link,

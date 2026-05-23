@@ -133,6 +133,8 @@ class Mirror(TaskListener):
             "-ff": set(),
             "-sr": False,
             "-streamremove": False,
+            "-ms": False,
+            "-megaselect": False,
         }
 
         arg_parser(input_list[1:], args)
@@ -187,6 +189,7 @@ class Mirror(TaskListener):
         self.user_trans = args["-ut"]
         self.is_yt = args["-yt"]
         self.stream_remove = args["-sr"] or args["-streamremove"]
+        self.mega_select = args["-ms"] or args["-megaselect"]
         self.metadata_dict = self.default_metadata_dict.copy()
         self.audio_metadata_dict = self.audio_metadata_dict.copy()
         self.video_metadata_dict = self.video_metadata_dict.copy()

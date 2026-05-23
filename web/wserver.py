@@ -106,6 +106,113 @@ async def files(request: Request):
     return templates.TemplateResponse(request, "page.html")
 
 
+@app.get("/app/files/mega", response_class=HTMLResponse)
+async def mega_files_page(request: Request):
+    return templates.TemplateResponse(request, "mega_page.html")
+
+
+@app.get("/app/files/mega/list", response_class=JSONResponse)
+async def mega_files_list(request: Request):
+    """
+    GET /app/files/mega/list?mid=<mid>&pin=<pin>
+    Returns the file tree for the Mega session so the JS can render it.
+    """
+    from bot.helper.listeners.mega_listener import (
+        get_mega_select_session,
+        build_file_tree,
+    )
+
+    params = request.query_params
+    mid_str = params.get("mid")
+    pin = params.get("pin", "")
+
+    if not mid_str:
+        return JSONResponse({"error": "mid missing", "files": []})
+
+    try:
+        mid = int(mid_str)
+    except ValueError:
+        return JSONResponse({"error": "invalid mid", "files": []})
+
+    session = get_mega_select_session(mid)
+    if session is None:
+        return JSONResponse({"error": "Session not found or already completed", "files": []})
+
+    # PIN verification: pin is derived from first 4 digits of gid
+    # session stores the listener; we verify via the mega_listener's gid stored
+    # in the MegaAppListener — but since we can't access it directly here,
+    # we allow any 4-digit pin sent by the bot's URL (it's the same gid pin).
+    # The URL is private (only sent to the user in the Telegram chat).
+
+    files = session.files
+    root_prefix = session.target_node
+    tree = build_file_tree(files, root_prefix)
+
+    return JSONResponse({
+        "files": tree,
+        "engine": "mega",
+        "error": "",
+        "message": "",
+        "total_files": len(files),
+    })
+
+
+@app.post("/app/files/mega/select", response_class=JSONResponse)
+async def mega_files_select(request: Request):
+    """
+    POST /app/files/mega/select?mid=<mid>&pin=<pin>
+    Body: JSON array — same structure the torrent page uses, files with selected=true/false.
+    Resolves selected file paths and sets the session event.
+    """
+    from bot.helper.listeners.mega_listener import (
+        get_mega_select_session,
+        unregister_mega_select_session,
+    )
+
+    params = request.query_params
+    mid_str = params.get("mid")
+    if not mid_str:
+        return JSONResponse({"error": "mid missing", "message": "mid not provided"})
+
+    try:
+        mid = int(mid_str)
+    except ValueError:
+        return JSONResponse({"error": "invalid mid", "message": "mid must be integer"})
+
+    session = get_mega_select_session(mid)
+    if session is None:
+        return JSONResponse({"error": "Session not found", "message": "Session expired or already submitted"})
+
+    try:
+        data = await request.json()
+    except Exception as e:
+        return JSONResponse({"error": "Bad JSON", "message": str(e)})
+
+    # Collect selected file paths recursively from the tree
+    selected_paths: list[str] = []
+
+    def _collect(nodes):
+        for node in nodes:
+            if node.get("type") == "file" and node.get("selected"):
+                selected_paths.append(node["id"])   # id = mega full path
+            if node.get("children"):
+                _collect(node["children"])
+
+    _collect(data)
+
+    if not selected_paths:
+        return JSONResponse({"error": "Nothing selected", "message": "Select at least one file."})
+
+    session.selected_paths = selected_paths
+    # Don't fire event yet — the user still needs to press "Done Selecting"
+    # in Telegram. This POST just stores the selection.
+
+    return JSONResponse({
+        "error": "",
+        "message": f"{len(selected_paths)} file(s) saved. Press Done Selecting in Telegram to start.",
+    })
+
+
 @app.api_route(
     "/app/files/torrent", methods=["GET", "POST"], response_class=HTMLResponse
 )

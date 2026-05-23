@@ -13,7 +13,7 @@ from aiofiles.os import path as aiopath, remove as aio_remove, rename as aio_ren
 from .. import LOGGER, task_dict, task_dict_lock, cpu_eater_lock
 from ..helper.ext_utils.bot_utils import new_task
 from ..helper.ext_utils.media_utils import FFMpeg, get_document_type, get_media_info, get_streams
-from ..helper.ext_utils.status_utils import MirrorStatus, get_readable_file_size
+from ..helper.ext_utils.status_utils import EngineStatus, MirrorStatus, get_readable_file_size
 from ..helper.mirror_leech_utils.status_utils.ffmpeg_status import FFmpegStatus
 from ..helper.telegram_helper.button_build import ButtonMaker
 from ..helper.telegram_helper.message_utils import (
@@ -41,19 +41,21 @@ def unregister_stream_remove_session(mid: int):
 
 
 # ------------------------------------------------------------------
-# "Waiting for user" status — shows in the progress bar as "StreamWait"
+# "Waiting for user" status — shows in the task list as "StreamWait"
 # ------------------------------------------------------------------
 
 class StreamWaitStatus:
     """
     Shown in the task list while the bot is waiting for the user to
-    select which streams to remove. Progress bar stays hidden and the
-    status line reads "StreamWait".
+    select which streams to remove. The status line reads "StreamWait"
+    and no progress bar is shown.
     """
 
     def __init__(self, listener, gid: str):
         self.listener = listener
         self._gid = gid
+        # Required by get_readable_message — matches all other status classes
+        self.engine = EngineStatus().STATUS_FFMPEG
 
     def gid(self):
         return self._gid
@@ -142,7 +144,7 @@ async def _collect_tracks(file_path: str) -> list[dict]:
     """
     Returns a list of dicts, one per audio/subtitle stream:
       {index, type, lang, label}
-    index = ffprobe stream index (used later with -map -0:index)
+    index = ffprobe stream index (used later with -map -0:<index>)
     """
     streams = await get_streams(file_path)
     if not streams:
@@ -157,7 +159,7 @@ async def _collect_tracks(file_path: str) -> list[dict]:
         type_label = "Audio" if codec_type == "audio" else "Subtitle"
         tracks.append({
             "index": s["index"],
-            "type": type_label,
+            "type": type_label,       # "Audio" or "Subtitle"
             "lang": label_lang,
             "label": f"{type_label} ~ {label_lang}",
         })
@@ -178,17 +180,35 @@ class StreamRemoveSession:
         self.cancelled = False
         self.ui_message = ui_message
 
+    # ── Indices helpers ─────────────────────────────────────────────
+
+    def _indices_of_type(self, type_label: str) -> set[int]:
+        """Return list-indices of all tracks of a given type."""
+        return {i for i, t in enumerate(self.tracks) if t["type"] == type_label}
+
+    # ── Markup builder ──────────────────────────────────────────────
+
     def build_markup(self):
         bm = ButtonMaker()
+
+        # Individual track buttons (2 per row)
         for i, track in enumerate(self.tracks):
             tick = " ✓" if i in self.selected else ""
             bm.data_button(
                 f"{track['label']}{tick}",
                 f"sr {self.mid} toggle {i}",
             )
-        bm.data_button("✅ Done", f"sr {self.mid} done", position="footer")
+
+        # Action row: All Audio | All Subtitles | Reverse
+        bm.data_button("🔊 All Audio",    f"sr {self.mid} allaudio",    position="footer")
+        bm.data_button("📝 All Subtitles", f"sr {self.mid} allsubs",     position="footer")
+        bm.data_button("🔄 Reverse",      f"sr {self.mid} reverse",     position="footer")
+
+        # Final row: Done | Cancel
+        bm.data_button("✅ Done",   f"sr {self.mid} done",   position="footer")
         bm.data_button("❌ Cancel", f"sr {self.mid} cancel", position="footer")
-        return bm.build_menu(b_cols=2, f_cols=2)
+
+        return bm.build_menu(b_cols=2, f_cols=3)
 
     def selected_stream_indices(self) -> list[int]:
         return [self.tracks[i]["index"] for i in sorted(self.selected)]
@@ -219,6 +239,7 @@ async def stream_remove_callback(_, query):
         await query.answer("This selection is not for you!", show_alert=True)
         return
 
+    # ── toggle: flip one track ───────────────────────────────────────
     if action == "toggle":
         idx = int(data[3])
         if idx in session.selected:
@@ -232,12 +253,52 @@ async def stream_remove_callback(_, query):
             session.build_markup(),
         )
 
+    # ── allaudio: select all audio tracks, fire immediately ─────────
+    elif action == "allaudio":
+        audio_idx = session._indices_of_type("Audio")
+        if not audio_idx:
+            await query.answer("No audio tracks found.", show_alert=True)
+            return
+        session.selected = audio_idx
+        await query.answer("All audio tracks selected. Processing…")
+        session.cancelled = False
+        session.event.set()
+        await delete_message(session.ui_message)
+
+    # ── allsubs: select all subtitle tracks, fire immediately ────────
+    elif action == "allsubs":
+        sub_idx = session._indices_of_type("Subtitle")
+        if not sub_idx:
+            await query.answer("No subtitle tracks found.", show_alert=True)
+            return
+        session.selected = sub_idx
+        await query.answer("All subtitle tracks selected. Processing…")
+        session.cancelled = False
+        session.event.set()
+        await delete_message(session.ui_message)
+
+    # ── reverse: invert current selection, then wait for Done ────────
+    elif action == "reverse":
+        all_idx = set(range(len(session.tracks)))
+        session.selected = all_idx - session.selected
+        await query.answer("Selection reversed.")
+        await edit_message(
+            session.ui_message,
+            session.ui_message.text,
+            session.build_markup(),
+        )
+
+    # ── done: proceed with current selection ─────────────────────────
     elif action == "done":
+        if not session.selected:
+            await query.answer("Nothing selected! Pick at least one track or press Cancel.", show_alert=True)
+            return
         await query.answer("Processing…")
         session.cancelled = False
         session.event.set()
         await delete_message(session.ui_message)
 
+    # ── cancel ───────────────────────────────────────────────────────
     elif action == "cancel":
         await query.answer("Cancelled.")
         session.cancelled = True
@@ -262,8 +323,9 @@ async def prompt_stream_remove(listener, dl_path: str, gid: str) -> str:
         LOGGER.info(f"StreamRemove: no audio/subtitle tracks found in {dl_path}, skipping.")
         return dl_path
 
-    # ── 2. Switch status to StreamWait so the task bar shows "Waiting" ─
-    #       instead of being stuck on "Downloading 100%"                 ─
+    # ── 2. Switch status to StreamWait ───────────────────────────────
+    #    engine attr is required by get_readable_message; missing it
+    #    caused a silent crash that froze the whole status refresh loop.
     async with task_dict_lock:
         task_dict[listener.mid] = StreamWaitStatus(listener, gid)
     listener.progress = False   # suppress default progress updater
@@ -297,12 +359,11 @@ async def prompt_stream_remove(listener, dl_path: str, gid: str) -> str:
     register_stream_remove_session(session)
     await edit_message(ui_msg, msg_text, session.build_markup())
 
-    # ── 5. Wait for Done / Cancel ─────────────────────────────────────
+    # ── 5. Wait for Done / Cancel / All-Audio / All-Subs ─────────────
     await session.event.wait()
     unregister_stream_remove_session(listener.mid)
 
-    # Restore progress flag regardless of outcome
-    listener.progress = True
+    listener.progress = True   # restore regardless of outcome
 
     if listener.is_cancelled or session.cancelled:
         return dl_path
@@ -362,8 +423,8 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
 
     Progress display:
       - Status label : "Stream Rm"  (via FFmpegStatus "StreamRemove")
-      - Progress %   : per-file time-based progress from FFMpeg._ffmpeg_progress()
-      - Count        : (files_done / total_files) shown in "Count:" row
+      - Progress %   : per-file time-based progress via FFMpeg._ffmpeg_progress()
+      - Count        : (files_done / total_files) in the "Count:" row
       - Sub Name     : current filename being processed
     """
     media_files = await _collect_media_files(dl_path)
@@ -371,17 +432,17 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
     if total_files == 0:
         return dl_path
 
-    # Populate files_to_proceed so the "Count:" field shows the denominator
+    # Populate files_to_proceed so the "Count:" denominator is correct
     listener.files_to_proceed = list(media_files)
 
-    # Build ffmpeg -map args: keep all, then exclude each selected index
+    # Build -map args: keep everything then exclude each selected stream
     map_args: list[str] = ["-map", "0"]
     for idx in stream_indices:
         map_args += ["-map", f"-0:{idx}"]
 
     ffmpeg = FFMpeg(listener)
 
-    # Switch task status to FFmpegStatus "StreamRemove" → displays "Stream Rm"
+    # Switch task status → "Stream Rm"
     async with task_dict_lock:
         task_dict[listener.mid] = FFmpegStatus(listener, ffmpeg, gid, "StreamRemove")
 
@@ -394,15 +455,14 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
             if listener.is_cancelled:
                 break
 
-            # Update progress metadata for the status bar
             listener.subname = ospath.basename(f_path)
             listener.subsize = ospath.getsize(f_path) if ospath.exists(f_path) else 0
-            listener.proceed_count = file_index - 1  # will be set to file_index on success
+            listener.proceed_count = file_index - 1   # updated to file_index on success
 
             base, ext = ospath.splitext(f_path)
             out_path = f"{base}_sr_out{ext}"
 
-            # Use -progress pipe:1 so FFMpeg._ffmpeg_progress() can read it
+            # -progress pipe:1 lets FFMpeg._ffmpeg_progress() parse progress lines
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -417,7 +477,6 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
 
             LOGGER.info(f"StreamRemove [{file_index}/{total_files}]: {listener.subname}")
 
-            # Prime FFMpeg for this file
             ffmpeg.clear()
             ffmpeg._total_time = (await get_media_info(f_path))[0]
 
@@ -425,11 +484,11 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
                 *cmd, stdout=PIPE, stderr=PIPE
             )
 
-            # _ffmpeg_progress() reads stdout via readline().
-            # communicate() also tries to read stdout → RuntimeError: two readers.
-            # Fix: drain stderr separately, use wait() for the process,
-            # and let _ffmpeg_progress() own stdout entirely.
-            stderr_chunks = []
+            # _ffmpeg_progress() owns stdout (readline loop).
+            # We must NOT call communicate() — it also reads stdout and raises
+            # RuntimeError("read() called while another coroutine is already waiting").
+            # Instead: drain stderr ourselves and just wait() for the process.
+            stderr_chunks: list[bytes] = []
 
             async def _drain_stderr():
                 while True:
@@ -448,7 +507,7 @@ async def _remove_streams(listener, dl_path: str, stream_indices: list[int], gid
             if returncode == 0:
                 await aio_remove(f_path)
                 await aio_rename(out_path, f_path)
-                listener.proceed_count = file_index  # mark done
+                listener.proceed_count = file_index
             else:
                 err_msg = b"".join(stderr_chunks).decode(errors="replace").strip()
                 LOGGER.error(

@@ -61,38 +61,96 @@ async def mega_cleanup():
 
 
 # ------------------------------------------------------------------
-# megals recursive listing helper
+# MegaCMD recursive listing helper (uses mega-find, already in base image)
 # ------------------------------------------------------------------
 
 async def megals_recursive(mega_path: str) -> list[dict]:
     """
-    Run `megals -rl <path>` and return a list of file dicts:
-      {path, size, name}
-    Only files (not folders) are returned; folders are implied by path structure.
-    """
-    stdout, stderr, ret = await cmd_exec(["megals", "-rl", mega_path])
-    if ret != 0 or not stdout.strip():
-        LOGGER.error(f"megals failed for {mega_path}: {stderr}")
-        return []
+    Use MegaCMD's `mega-find <path>` to list all nodes under mega_path,
+    then `mega-ls -l` each file to get its size.
 
-    files = []
-    for line in stdout.strip().splitlines():
-        # Format: <perms> <count> <user> <group> <size> <date> <time> <path>
-        parts = line.split(None, 7)
-        if len(parts) < 8:
+    Strategy:
+      1. mega-find <path> -- lists every node (files + folders) recursively,
+         one per line as the full mega path.
+      2. mega-ls -l <path> on the parent to get sizes.
+      3. We filter to files only (folders have size "-" in mega-ls -l).
+
+    Returns list of {path, name, size}.
+    """
+    # Step 1: get all nodes recursively via mega-find
+    stdout, stderr, ret = await cmd_exec(["mega-find", mega_path])
+    if ret != 0 or not stdout.strip():
+        # Fallback: maybe it's a single file, try mega-ls -l directly
+        stdout, stderr, ret = await cmd_exec(["mega-ls", "-l", mega_path])
+        if ret != 0 or not stdout.strip():
+            LOGGER.error(f"mega-find and mega-ls both failed for {mega_path}: {stderr}")
+            return []
+        # Parse single-level listing for files
+        return _parse_megals_long(stdout, mega_path)
+
+    all_paths = [line.strip() for line in stdout.strip().splitlines() if line.strip()]
+
+    # Step 2: for each path, determine if file or folder via mega-ls -l
+    # To avoid N calls, group siblings by parent and call mega-ls -l on each parent dir
+    # Collect unique parent directories
+    parent_dirs: set[str] = set()
+    for p in all_paths:
+        parent = p.rsplit("/", 1)[0] if "/" in p else mega_path
+        parent_dirs.add(parent)
+
+    # Map: mega_path -> {name, size}
+    file_info: dict[str, dict] = {}
+
+    for parent in parent_dirs:
+        ls_out, _, ls_ret = await cmd_exec(["mega-ls", "-l", parent])
+        if ls_ret != 0 or not ls_out.strip():
             continue
-        size_str = parts[4]
-        full_path = parts[7].strip()
-        # Skip if it looks like a directory (size is "-" or 0 and no extension)
+        for line in ls_out.strip().splitlines():
+            if not line.strip():
+                continue
+            # MegaCMD mega-ls -l format:
+            # FLAGS SIZE DATE TIME NAME
+            # e.g.: -rw-r--r-- 12345678 2024-01-15 10:30:00 filename.mkv
+            # folders show "-" as size
+            match = re_search(r"\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$", line)
+            if not match:
+                continue
+            size_str = match.group(1)
+            name = match.group(2).strip()
+            if size_str == "-":
+                continue  # skip folders
+            full_path = f"{parent}/{name}" if not parent.endswith("/") else f"{parent}{name}"
+            file_info[full_path] = {"name": name, "size": int(size_str)}
+
+    # Step 3: build result — only paths that are known files
+    result = []
+    for p in all_paths:
+        if p in file_info:
+            result.append({
+                "path": p,
+                "name": file_info[p]["name"],
+                "size": file_info[p]["size"],
+            })
+
+    return result
+
+
+def _parse_megals_long(stdout: str, parent: str) -> list[dict]:
+    """Parse `mega-ls -l` output for a single directory level."""
+    result = []
+    for line in stdout.strip().splitlines():
+        if not line.strip():
+            continue
+        match = re_search(r"\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$", line)
+        if not match:
+            continue
+        size_str = match.group(1)
+        name = match.group(2).strip()
         if size_str == "-":
             continue
-        try:
-            size = int(size_str)
-        except ValueError:
-            continue
-        name = full_path.rsplit("/", 1)[-1]
-        files.append({"path": full_path, "name": name, "size": size})
-    return files
+        full_path = f"{parent}/{name}" if not parent.endswith("/") else f"{parent}{name}"
+        result.append({"path": full_path, "name": name, "size": int(size_str)})
+    return result
 
 
 def build_file_tree(files: list[dict], root_prefix: str) -> list[dict]:
@@ -275,12 +333,12 @@ class MegaAppListener:
 
     async def _run_file_selector(self, target_node: str) -> list[str] | None:
         """
-        Lists all files under target_node with megals, stores them in a
-        MegaSelectSession keyed by listener.mid, sends the web URL to the
-        user, and waits for the web POST to set the event.
+        Lists all files under target_node using MegaCMD's mega-find + mega-ls,
+        stores them in a MegaSelectSession keyed by listener.mid, sends the
+        web URL to the user, and waits for the web POST + Done button.
         Returns list of selected mega paths, or None if cancelled.
         """
-        LOGGER.info(f"MegaSelect: listing files under {target_node}")
+        LOGGER.info(f"MegaSelect: listing files under {target_node} via mega-find")
         files = await megals_recursive(target_node)
         if not files:
             await self.listener.on_download_error("No files found in this Mega folder.")

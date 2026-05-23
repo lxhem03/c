@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mega File Selector</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.5s, color 0.5s; display: flex; flex-direction: column; min-height: 100vh; }
+        .dark { background-color: hsl(224 71% 4%); color: hsl(213 31% 91%); }
+        .light { background-color: hsl(0 0% 100%); color: hsl(224 71% 4%); }
+        .card { background-color: hsl(224 71% 4%); border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px 0 rgba(0,0,0,.06); }
+        .dark .card { background-color: hsl(224 71% 8%); }
+        .light .card { background-color: hsl(0 0% 100%); color: hsl(224 71% 4%); }
+        .btn { padding: .5rem 1rem; border-radius: .375rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; transition: all .2s; }
+        .btn:hover { opacity: .9; }
+        .btn-primary { background-color: hsl(217.2 91.2% 59.8%); color: #fff; }
+        .btn-secondary { background-color: hsl(215 20.2% 65.1%); color: #fff; }
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: hsl(215 20.2% 65.1%); transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: #fff; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: hsl(217.2 91.2% 59.8%); }
+        input:checked + .slider:before { transform: translateX(26px); }
+        .file-tree-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid hsla(0,0%,100%,.1); transition: background-color .3s ease; }
+        .file-tree-item:hover { background-color: hsla(0,0%,100%,.1); }
+        .dark .file-tree-item:hover { background-color: hsla(0,0%,0%,.1); }
+        .icon { margin-right: 8px; font-size: 1.2em; }
+        .folder { cursor: pointer; font-weight: 600; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,.5); }
+        .modal-content { background-color: #fff; color: hsl(224 71% 4%); margin: 15% auto; padding: 20px; border-radius: 5px; width: 90%; max-width: 500px; }
+        .dark .modal-content { background-color: hsl(224 71% 4%); color: hsl(213 31% 91%); }
+        .size-info { font-size: .8em; color: hsl(215 20.2% 65.1%); }
+        .dark .size-info { color: hsl(213 31% 80%); }
+        .light input[type="text"], .light input[type="password"] { background-color: hsl(0 0% 95%); color: hsl(224 71% 4%); }
+        header { background: linear-gradient(135deg,#f093fb 0%,#f5576c 100%); padding: 2rem 0; box-shadow: 0 4px 6px rgba(0,0,0,.1); }
+        footer { background: linear-gradient(135deg,#f093fb 0%,#f5576c 100%); padding: 2rem 0; box-shadow: 0 -4px 6px rgba(0,0,0,.1); margin-top: auto; }
+        .social-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background-color: rgba(255,255,255,.2); color: #fff; font-size: 1.2rem; transition: all .3s ease; }
+        .social-button:hover { background-color: rgba(255,255,255,.3); transform: scale(1.1); }
+        .file-info { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
+        .file-name { word-break: break-word; max-width: 100%; overflow-wrap: break-word; }
+        .checkbox-wrapper { display: flex; align-items: center; justify-content: center; width: 40px; }
+        .notice-bar { background: hsl(217.2 91.2% 20%); border-left: 4px solid hsl(217.2 91.2% 59.8%); padding: .75rem 1rem; border-radius: .25rem; margin-bottom: 1rem; font-size: .9em; }
+        @media (max-width:640px) { .footer-content { flex-direction: column-reverse; align-items: center; } .footer-buttons { margin-bottom: 1rem; } }
+    </style>
+</head>
+
+<body class="dark">
+    <header>
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col sm:flex-row justify-between items-center">
+                <h1 class="text-3xl font-bold text-white mb-4 sm:mb-0">📦 Mega File Selector</h1>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <span id="themeIcon" class="mr-2 text-white">🌙</span>
+                        <label class="switch">
+                            <input type="checkbox" id="themeToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto p-4">
+        <div id="loadingState" class="card p-6 mb-4 text-center">
+            <p class="text-xl">⏳ Loading files from Mega…</p>
+            <p class="text-sm mt-2 opacity-70">Running megals, this may take a moment for large folders.</p>
+        </div>
+
+        <div id="errorState" class="card p-6 mb-4 hidden">
+            <p class="text-xl text-red-400">❌ <span id="errorMsg">Error loading files.</span></p>
+        </div>
+
+        <div id="fileManager" class="card p-6 hidden">
+            <div class="notice-bar">
+                ℹ️ Select the files you want to download, then press <b>Done Selecting</b> in Telegram to start the download.
+            </div>
+            <div class="flex flex-wrap justify-between items-start mb-4">
+                <div class="flex flex-col items-center mr-2 mb-2">
+                    <button id="selectAllBtn" class="btn btn-primary">Select All</button>
+                    <span class="text-xs mt-1">in this folder</span>
+                </div>
+                <div class="flex flex-col items-center mr-2 mb-2">
+                    <button id="invertSelectionBtn" class="btn btn-primary">Invert Selection</button>
+                    <span class="text-xs mt-1">in this folder</span>
+                </div>
+                <div class="flex flex-col items-center mr-2 mb-2">
+                    <button id="selectEverythingBtn" class="btn btn-primary">Select Everything</button>
+                    <span class="text-xs mt-1">all files</span>
+                </div>
+                <button id="submitBtn" class="btn btn-primary mb-2">✅ Submit Selection</button>
+            </div>
+            <div class="mb-4">
+                <p>Selected files: <span id="selectedCount">0</span> / <span id="totalCount">0</span></p>
+                <p>Total size: <span id="selectedSize">0 B</span> / <span id="totalSize">0 B</span></p>
+            </div>
+            <div id="fileTree" class="mb-4"></div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container mx-auto px-4">
+            <div class="footer-content flex flex-col sm:flex-row justify-between items-center">
+                <p class="text-white mb-4 sm:mb-0">&copy; 2025 Mega File Selector. All rights reserved.</p>
+                <div class="footer-buttons flex space-x-4">
+                    <a href="https://github.com/SilentDemonSD/WZML-X" target="_blank" class="social-button"><i class="fab fa-github"></i></a>
+                    <a href="https://t.me/WZML_X" target="_blank" class="social-button"><i class="fab fa-telegram"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <div id="reusableModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle" class="text-xl font-bold mb-4"></h2>
+            <div id="modalBody"></div>
+            <div id="modalFooter" class="mt-4"></div>
+        </div>
+    </div>
+
+    <script>
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const body = document.body;
+        const fileTree = document.getElementById('fileTree');
+        const selectedCountEl = document.getElementById('selectedCount');
+        const totalCountEl = document.getElementById('totalCount');
+        const selectedSizeEl = document.getElementById('selectedSize');
+        const totalSizeEl = document.getElementById('totalSize');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const invertSelectionBtn = document.getElementById('invertSelectionBtn');
+        const selectEverythingBtn = document.getElementById('selectEverythingBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const fileManager = document.getElementById('fileManager');
+        const loadingState = document.getElementById('loadingState');
+        const errorState = document.getElementById('errorState');
+        const reusableModal = document.getElementById('reusableModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const modalFooter = document.getElementById('modalFooter');
+
+        const urlParams = new Proxy(new URLSearchParams(window.location.search), {
+            get: (sp, prop) => sp.get(prop),
+        });
+
+        let currentFolder = null;
+        let files = [];
+
+        // ── Theme ────────────────────────────────────────────────────
+        function loadThemePreference() {
+            const saved = localStorage.getItem('darkMode');
+            if (saved !== null) {
+                const isDark = saved === 'true';
+                body.classList.toggle('dark', isDark);
+                body.classList.toggle('light', !isDark);
+                themeToggle.checked = isDark;
+                themeIcon.textContent = isDark ? '☀️' : '🌙';
+            }
+        }
+        themeToggle.addEventListener('change', () => {
+            body.classList.toggle('dark');
+            body.classList.toggle('light');
+            const isDark = body.classList.contains('dark');
+            themeIcon.textContent = isDark ? '☀️' : '🌙';
+            localStorage.setItem('darkMode', isDark);
+        });
+
+        // ── Helpers ──────────────────────────────────────────────────
+        function formatSize(size) {
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+            return `${size.toFixed(2)} ${units[i]}`;
+        }
+
+        function calculateFolderSize(folder) {
+            let total = 0;
+            const q = [folder];
+            while (q.length) {
+                const n = q.pop();
+                if (n.type === 'file') total += n.size;
+                else if (n.children) q.push(...n.children);
+            }
+            return total;
+        }
+
+        function areAllChildrenSelected(folder) {
+            return folder.children.every(c => c.type === 'folder' ? areAllChildrenSelected(c) : c.selected);
+        }
+
+        function areSomeChildrenSelected(folder) {
+            return folder.children.some(c => c.type === 'folder' ? areSomeChildrenSelected(c) : c.selected);
+        }
+
+        function calculateStats(nodes) {
+            let sc = 0, tc = 0, ss = 0, ts = 0;
+            const q = [...nodes];
+            while (q.length) {
+                const n = q.pop();
+                if (n.type === 'file') { tc++; ts += n.size; if (n.selected) { sc++; ss += n.size; } }
+                if (n.children) q.push(...n.children);
+            }
+            return { sc, tc, ss, ts };
+        }
+
+        function updateStats() {
+            const { sc, tc, ss, ts } = calculateStats(files);
+            selectedCountEl.textContent = sc;
+            totalCountEl.textContent = tc;
+            selectedSizeEl.textContent = formatSize(ss);
+            totalSizeEl.textContent = formatSize(ts);
+        }
+
+        function findParent(root, id) {
+            if (root.children) {
+                for (const c of root.children) {
+                    if (c.id === id) return root;
+                    const f = findParent(c, id);
+                    if (f) return f;
+                }
+            }
+            return null;
+        }
+
+        function updateParentFolders(node) {
+            if (!files[0]) return;
+            let parent = findParent(files[0], node.id);
+            while (parent) {
+                parent.selected = areAllChildrenSelected(parent);
+                parent = findParent(files[0], parent.id);
+            }
+        }
+
+        function toggleFolder(folder, isSelected) {
+            folder.selected = isSelected;
+            const q = [folder];
+            while (q.length) {
+                const n = q.pop();
+                n.selected = isSelected;
+                if (n.children) q.push(...n.children);
+            }
+        }
+
+        function toggleFile(node) {
+            if (node.type === 'folder') {
+                toggleFolder(node, !areAllChildrenSelected(node));
+            } else {
+                node.selected = !node.selected;
+            }
+            updateParentFolders(node);
+            updateStats();
+            renderFileTree(currentFolder ? currentFolder.children : files);
+        }
+
+        // ── Render ───────────────────────────────────────────────────
+        function renderFileTree(nodes) {
+            fileTree.innerHTML = '';
+            if (currentFolder) {
+                const back = document.createElement('div');
+                back.className = 'file-tree-item folder';
+                back.innerHTML = '<span class="icon">📁</span>..';
+                back.addEventListener('click', goBack);
+                fileTree.appendChild(back);
+            }
+            nodes.forEach(node => {
+                const div = document.createElement('div');
+                div.className = 'file-tree-item';
+
+                const cbWrap = document.createElement('div');
+                cbWrap.className = 'checkbox-wrapper';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.id = node.id;
+                cb.checked = node.selected;
+                cb.addEventListener('change', () => toggleFile(node));
+                cbWrap.appendChild(cb);
+
+                const icon = document.createElement('span');
+                icon.className = 'icon';
+                icon.textContent = node.type === 'folder' ? '📁' : '📄';
+
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'file-info';
+
+                const nameEl = document.createElement('div');
+                nameEl.className = 'file-name cursor-pointer';
+                nameEl.textContent = node.name;
+
+                const sizeEl = document.createElement('div');
+                sizeEl.className = 'size-info';
+                const sz = node.type === 'folder' ? calculateFolderSize(node) : node.size;
+                sizeEl.textContent = formatSize(sz);
+
+                div.addEventListener('click', e => {
+                    if (e.target.className === 'file-name cursor-pointer') toggleFile(node);
+                });
+
+                fileInfo.appendChild(nameEl);
+                fileInfo.appendChild(sizeEl);
+                div.appendChild(cbWrap);
+                div.appendChild(icon);
+                div.appendChild(fileInfo);
+
+                if (node.type === 'folder') {
+                    nameEl.classList.add('folder', 'folder-name');
+                    nameEl.addEventListener('click', e => { e.preventDefault(); openFolder(node); });
+                    if (areAllChildrenSelected(node)) cb.checked = true;
+                    else if (areSomeChildrenSelected(node)) cb.indeterminate = true;
+                }
+
+                fileTree.appendChild(div);
+            });
+            updateSelectAllButtonText();
+            updateSelectEverythingButtonText();
+        }
+
+        function openFolder(folder) { currentFolder = folder; renderFileTree(folder.children); updateStats(); }
+        function goBack() {
+            if (!currentFolder) return;
+            const parent = findParent(files[0], currentFolder.id);
+            if (parent) { currentFolder = parent; renderFileTree(parent.children); }
+            else { currentFolder = null; renderFileTree(files); }
+            updateStats();
+        }
+
+        function selectAll() {
+            const nodes = currentFolder ? currentFolder.children : files;
+            const all = nodes.every(n => n.type === 'folder' ? areAllChildrenSelected(n) : n.selected);
+            nodes.forEach(n => n.type === 'folder' ? toggleFolder(n, !all) : (n.selected = !all));
+            updateStats(); renderFileTree(nodes); updateSelectAllButtonText();
+        }
+
+        function invertSelection() {
+            function inv(nodes) { nodes.forEach(n => { if (n.type === 'folder') inv(n.children); else n.selected = !n.selected; }); }
+            inv(currentFolder ? currentFolder.children : files);
+            updateStats(); renderFileTree(currentFolder ? currentFolder.children : files);
+        }
+
+        function selectEverything() {
+            const all = files.every(n => n.type === 'folder' ? areAllChildrenSelected(n) : n.selected);
+            function rec(nodes, sel) { nodes.forEach(n => { n.selected = sel; if (n.children) rec(n.children, sel); }); }
+            rec(files, !all);
+            updateStats(); renderFileTree(currentFolder ? currentFolder.children : files); updateSelectEverythingButtonText();
+        }
+
+        function updateSelectAllButtonText() {
+            const nodes = currentFolder ? currentFolder.children : files;
+            selectAllBtn.textContent = nodes.every(n => n.type === 'folder' ? areAllChildrenSelected(n) : n.selected) ? 'Deselect All' : 'Select All';
+        }
+
+        function updateSelectEverythingButtonText() {
+            selectEverythingBtn.textContent = files.every(n => n.type === 'folder' ? areAllChildrenSelected(n) : n.selected) ? 'Deselect Everything' : 'Select Everything';
+        }
+
+        // ── Modal ────────────────────────────────────────────────────
+        function openModal() { reusableModal.style.display = 'block'; }
+        function closeModal() { reusableModal.style.display = 'none'; }
+
+        // ── Submit ───────────────────────────────────────────────────
+        function submitData() {
+            const { sc } = calculateStats(files);
+            if (sc === 0) {
+                modalTitle.textContent = 'Nothing selected';
+                modalBody.innerHTML = '<p>Please select at least one file.</p>';
+                modalFooter.innerHTML = '<button class="btn btn-primary" onclick="closeModal()">OK</button>';
+                openModal(); return;
+            }
+            modalTitle.textContent = 'Submitting…';
+            modalBody.innerHTML = `<p>Saving selection of ${sc} file(s)…</p>`;
+            modalFooter.innerHTML = '';
+            openModal();
+
+            const url = `/app/files/mega/select?mid=${urlParams.mid}&pin=${urlParams.pin}`;
+            fetch(url, { method: 'POST', body: JSON.stringify(files), headers: { 'Content-Type': 'application/json' } })
+                .then(r => r.json())
+                .then(data => {
+                    closeModal();
+                    if (data.error) {
+                        modalTitle.textContent = 'Error';
+                        modalBody.innerHTML = `<p>${data.message}</p>`;
+                    } else {
+                        modalTitle.textContent = '✅ Selection Saved!';
+                        modalBody.innerHTML = `<p>${data.message}</p><p class="mt-2 font-bold">Now press <b>Done Selecting</b> in Telegram to start downloading.</p>`;
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = '✅ Submitted';
+                    }
+                    modalFooter.innerHTML = '<button class="btn btn-primary" onclick="closeModal()">OK</button>';
+                    openModal();
+                })
+                .catch(err => {
+                    closeModal();
+                    modalTitle.textContent = 'Network Error';
+                    modalBody.innerHTML = `<p>${err.message}</p>`;
+                    modalFooter.innerHTML = '<button class="btn btn-primary" onclick="closeModal()">OK</button>';
+                    openModal();
+                });
+        }
+
+        // ── Initial load ─────────────────────────────────────────────
+        function loadFiles() {
+            const mid = urlParams.mid;
+            const pin = urlParams.pin;
+            if (!mid) {
+                loadingState.classList.add('hidden');
+                document.getElementById('errorMsg').textContent = 'Missing mid parameter.';
+                errorState.classList.remove('hidden');
+                return;
+            }
+
+            fetch(`/app/files/mega/list?mid=${mid}&pin=${pin}`)
+                .then(r => r.json())
+                .then(data => {
+                    loadingState.classList.add('hidden');
+                    if (data.error) {
+                        document.getElementById('errorMsg').textContent = data.error;
+                        errorState.classList.remove('hidden');
+                        return;
+                    }
+                    files = data.files;
+                    fileManager.classList.remove('hidden');
+                    renderFileTree(files);
+                    updateStats();
+                    updateSelectAllButtonText();
+                    updateSelectEverythingButtonText();
+                })
+                .catch(err => {
+                    loadingState.classList.add('hidden');
+                    document.getElementById('errorMsg').textContent = err.message;
+                    errorState.classList.remove('hidden');
+                });
+        }
+
+        // ── Wire up buttons ──────────────────────────────────────────
+        selectAllBtn.addEventListener('click', selectAll);
+        invertSelectionBtn.addEventListener('click', invertSelection);
+        selectEverythingBtn.addEventListener('click', selectEverything);
+        submitBtn.addEventListener('click', submitData);
+        reusableModal.addEventListener('click', e => { if (e.target === reusableModal) e.stopPropagation(); });
+
+        loadThemePreference();
+        loadFiles();
+    </script>
+</body>
+</html>

@@ -137,6 +137,7 @@ class TaskConfig:
         self.progress = True
         self.ffmpeg_cmds = None
         self.stream_remove = False
+        self.mega_select = False
         self.metadata_title = None
         self.chat_thread_id = None
         self.subproc = None

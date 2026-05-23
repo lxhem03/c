@@ -84,21 +84,16 @@ def create_help_buttons():
 
 
 def compare_versions(v1, v2):
-    try:
-        if not v1 or not v2:
-            return "Version info unavailable"
-        v1p, v2p = (list(map(int, v.split("-")[0][1:].split("."))) for v in (v1, v2))
-        return (
-            "New Version Update is Available! Check Now!"
-            if v1p < v2p
-            else (
-                "More Updated! Kindly Contribute in Official"
-                if v1p > v2p
-                else "Already up to date with latest version"
-            )
+    v1, v2 = (list(map(int, v.split("-")[0][1:].split("."))) for v in (v1, v2))
+    return (
+        "New Version Update is Available! Check Now!"
+        if v1 < v2
+        else (
+            "More Updated! Kindly Contribute in Official"
+            if v1 > v2
+            else "Already up to date with latest version"
         )
-    except Exception:
-        return "Version comparison failed"
+    )
 
 
 def bt_selection_buttons(id_):
@@ -114,6 +109,19 @@ def bt_selection_buttons(id_):
         )
     buttons.data_button("Done Selecting", f"sel done {gid} {id_}")
     buttons.data_button("Cancel", f"sel cancel {gid}")
+    return buttons.build_menu(2)
+
+
+def mega_selection_buttons(mid: int, gid: str):
+    """Buttons sent to the user for Mega file selection (-ms / -megaselect)."""
+    pin = "".join([c for c in gid if c.isdigit()][:4]) or "0000"
+    buttons = ButtonMaker()
+    buttons.url_button(
+        "🗂 Select Files",
+        f"{Config.BASE_URL}/app/files/mega?mid={mid}&pin={pin}",
+    )
+    buttons.data_button("✅ Done Selecting", f"megasel done {mid}")
+    buttons.data_button("❌ Cancel", f"megasel cancel {mid}")
     return buttons.build_menu(2)
 
 
@@ -162,6 +170,8 @@ def arg_parser(items, arg_base):
         "-yt",
         "-sr",
         "-streamremove",
+        "-ms",
+        "-megaselect",
     }
     if Config.DISABLE_BULK and "-b" in items:
         arg_base["-b"] = False

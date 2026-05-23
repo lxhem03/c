@@ -84,16 +84,21 @@ def create_help_buttons():
 
 
 def compare_versions(v1, v2):
-    v1, v2 = (list(map(int, v.split("-")[0][1:].split("."))) for v in (v1, v2))
-    return (
-        "New Version Update is Available! Check Now!"
-        if v1 < v2
-        else (
-            "More Updated! Kindly Contribute in Official"
-            if v1 > v2
-            else "Already up to date with latest version"
+    try:
+        if not v1 or not v2:
+            return "Version info unavailable"
+        v1p, v2p = (list(map(int, v.split("-")[0][1:].split("."))) for v in (v1, v2))
+        return (
+            "New Version Update is Available! Check Now!"
+            if v1p < v2p
+            else (
+                "More Updated! Kindly Contribute in Official"
+                if v1p > v2p
+                else "Already up to date with latest version"
+            )
         )
-    )
+    except Exception:
+        return "Version comparison failed"
 
 
 def bt_selection_buttons(id_):
@@ -155,8 +160,6 @@ def arg_parser(items, arg_base):
         "-ut",
         "-bt",
         "-yt",
-        "-sr",
-        "-streamremove",
     }
     if Config.DISABLE_BULK and "-b" in items:
         arg_base["-b"] = False

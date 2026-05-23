@@ -61,96 +61,73 @@ async def mega_cleanup():
 
 
 # ------------------------------------------------------------------
-# MegaCMD recursive listing helper (uses mega-find, already in base image)
+# MegaCMD recursive listing helper (uses mega-ls -lr, already in base image)
 # ------------------------------------------------------------------
 
 async def megals_recursive(mega_path: str) -> list[dict]:
     """
-    Use MegaCMD's `mega-find <path>` to list all nodes under mega_path,
-    then `mega-ls -l` each file to get its size.
+    Use MegaCMD's `mega-ls -lr <path>` to recursively list all files
+    with sizes in a single call.
 
-    Strategy:
-      1. mega-find <path> -- lists every node (files + folders) recursively,
-         one per line as the full mega path.
-      2. mega-ls -l <path> on the parent to get sizes.
-      3. We filter to files only (folders have size "-" in mega-ls -l).
+    mega-ls -l output format per line:
+      FLAGS  SIZE  DATE  TIME  NAME
+      drwxr-xr-x  -  2024-01-15  10:30:00  SubFolder
+      -rw-r--r--  123456789  2024-01-15  10:30:00  file.mkv
 
+    With -r (recursive), MegaCMD prints a blank line + "NAME:" header
+    before each sub-directory's contents, e.g.:
+
+      /wzml_abc/Folder:
+      drwxr-xr-x  -   ...  SubA
+      -rw-r--r--  100 ...  file1.mkv
+
+      /wzml_abc/Folder/SubA:
+      -rw-r--r--  200 ...  file2.mkv
+
+    We parse this format to rebuild full paths and sizes.
+    Folders (size == "-") are skipped.
     Returns list of {path, name, size}.
     """
-    # Step 1: get all nodes recursively via mega-find
-    stdout, stderr, ret = await cmd_exec(["mega-find", mega_path])
+    stdout, stderr, ret = await cmd_exec(["mega-ls", "-lr", mega_path])
     if ret != 0 or not stdout.strip():
-        # Fallback: maybe it's a single file, try mega-ls -l directly
-        stdout, stderr, ret = await cmd_exec(["mega-ls", "-l", mega_path])
-        if ret != 0 or not stdout.strip():
-            LOGGER.error(f"mega-find and mega-ls both failed for {mega_path}: {stderr}")
-            return []
-        # Parse single-level listing for files
-        return _parse_megals_long(stdout, mega_path)
+        LOGGER.error(f"mega-ls -lr failed for {mega_path}: {stderr}")
+        return []
 
-    all_paths = [line.strip() for line in stdout.strip().splitlines() if line.strip()]
+    files: list[dict] = []
+    current_dir = mega_path.rstrip("/")
 
-    # Step 2: for each path, determine if file or folder via mega-ls -l
-    # To avoid N calls, group siblings by parent and call mega-ls -l on each parent dir
-    # Collect unique parent directories
-    parent_dirs: set[str] = set()
-    for p in all_paths:
-        parent = p.rsplit("/", 1)[0] if "/" in p else mega_path
-        parent_dirs.add(parent)
+    for raw_line in stdout.splitlines():
+        line = raw_line.rstrip()
 
-    # Map: mega_path -> {name, size}
-    file_info: dict[str, dict] = {}
-
-    for parent in parent_dirs:
-        ls_out, _, ls_ret = await cmd_exec(["mega-ls", "-l", parent])
-        if ls_ret != 0 or not ls_out.strip():
+        # Empty line — separator between sections, skip
+        if not line:
             continue
-        for line in ls_out.strip().splitlines():
-            if not line.strip():
-                continue
-            # MegaCMD mega-ls -l format:
-            # FLAGS SIZE DATE TIME NAME
-            # e.g.: -rw-r--r-- 12345678 2024-01-15 10:30:00 filename.mkv
-            # folders show "-" as size
-            match = re_search(r"\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$", line)
-            if not match:
-                continue
-            size_str = match.group(1)
-            name = match.group(2).strip()
-            if size_str == "-":
-                continue  # skip folders
-            full_path = f"{parent}/{name}" if not parent.endswith("/") else f"{parent}{name}"
-            file_info[full_path] = {"name": name, "size": int(size_str)}
 
-    # Step 3: build result — only paths that are known files
-    result = []
-    for p in all_paths:
-        if p in file_info:
-            result.append({
-                "path": p,
-                "name": file_info[p]["name"],
-                "size": file_info[p]["size"],
-            })
-
-    return result
-
-
-def _parse_megals_long(stdout: str, parent: str) -> list[dict]:
-    """Parse `mega-ls -l` output for a single directory level."""
-    result = []
-    for line in stdout.strip().splitlines():
-        if not line.strip():
+        # Directory header line: ends with ":"  e.g.  "/wzml_abc/Folder:"
+        # MegaCMD prints these with no leading whitespace
+        if line.endswith(":") and not line[0].isspace():
+            current_dir = line[:-1].rstrip("/")
             continue
-        match = re_search(r"\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$", line)
+
+        # File/folder entry line
+        match = re_search(
+            r"^[d\-][rwx\-]{9}\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$",
+            line,
+        )
         if not match:
             continue
+
         size_str = match.group(1)
         name = match.group(2).strip()
+
+        # Skip folders (size is "-")
         if size_str == "-":
             continue
-        full_path = f"{parent}/{name}" if not parent.endswith("/") else f"{parent}{name}"
-        result.append({"path": full_path, "name": name, "size": int(size_str)})
-    return result
+
+        full_path = f"{current_dir}/{name}"
+        files.append({"path": full_path, "name": name, "size": int(size_str)})
+
+    return files
 
 
 def build_file_tree(files: list[dict], root_prefix: str) -> list[dict]:
@@ -309,10 +286,10 @@ class MegaAppListener:
                 if self.listener.is_cancelled:
                     return
                 if selected_paths is None:
-                    # cancelled from web UI
-                    await self.listener.on_download_error("Mega selection cancelled by user.")
+                    # cancelled — on_download_start already called in _run_file_selector
+                    # so call on_upload_error to cleanly end the task
+                    await self.listener.on_upload_error("Mega selection cancelled.")
                     return
-                # selected_paths is a list of mega full paths to download
                 await self._download_selected(path, selected_paths)
                 return
 
@@ -333,16 +310,34 @@ class MegaAppListener:
 
     async def _run_file_selector(self, target_node: str) -> list[str] | None:
         """
-        Lists all files under target_node using MegaCMD's mega-find + mega-ls,
+        Lists all files under target_node using mega-ls -lr,
         stores them in a MegaSelectSession keyed by listener.mid, sends the
         web URL to the user, and waits for the web POST + Done button.
         Returns list of selected mega paths, or None if cancelled.
         """
-        LOGGER.info(f"MegaSelect: listing files under {target_node} via mega-find")
+        LOGGER.info(f"MegaSelect: listing files under {target_node} via mega-ls -lr")
         files = await megals_recursive(target_node)
+        LOGGER.info(f"MegaSelect: found {len(files)} files")
+
         if not files:
-            await self.listener.on_download_error("No files found in this Mega folder.")
+            LOGGER.error(f"MegaSelect: no files found under {target_node}")
+            # on_download_start not called yet — use on_download_error directly
+            await self.listener.on_download_error(
+                "No files found in this Mega folder. Check that the link is a folder."
+            )
             return None
+
+        # Show task in status bar while waiting for user selection
+        from ...helper.ext_utils.status_utils import MirrorStatus
+        from ...helper.mirror_leech_utils.status_utils.mega_status import MegaDownloadStatus
+        self.mega_status = MegaDownloadStatus(
+            self.listener, self, self.gid, MirrorStatus.STATUS_PAUSED
+        )
+        async with task_dict_lock:
+            task_dict[self.listener.mid] = self.mega_status
+        await self.listener.on_download_start()
+        if self.listener.multi <= 1:
+            await send_status_message(self.listener.message)
 
         # Store the file list so the web server can serve it
         session = MegaSelectSession(self.listener.mid, self.listener)
@@ -350,21 +345,21 @@ class MegaAppListener:
         session.target_node = target_node
         register_mega_select_session(session)
 
-        # Build selection URL
+        # Build selection URL and send UI message
         pin = "".join([c for c in self.gid if c.isdigit()][:4]) or "0000"
-        url = f"{Config.BASE_URL}/app/files/mega?mid={self.listener.mid}&pin={pin}"
         buttons = mega_selection_buttons(self.listener.mid, self.gid)
 
         ui_msg = await send_message(
             self.listener.message,
             f"<b>Mega File Selector</b>\n\n"
             f"<b>Name:</b> <code>{self.name}</code>\n"
-            f"<b>Files:</b> {len(files)}\n\n"
-            f"Select the files you want to download, then press <b>Done Selecting</b>.",
+            f"<b>Files found:</b> {len(files)}\n\n"
+            f"Open the web page, select the files you want to download, "
+            f"submit your selection, then press <b>Done Selecting</b> in this chat.",
             buttons,
         )
 
-        # Wait for the web UI to POST back the selection
+        # Wait for user to press Done Selecting or Cancel in Telegram
         await session.event.wait()
         unregister_mega_select_session(self.listener.mid)
         await delete_message(ui_msg)
@@ -379,7 +374,11 @@ class MegaAppListener:
     # ------------------------------------------------------------------
 
     async def _download_selected(self, local_path: str, mega_paths: list[str]):
-        """Download each selected mega path into local_path."""
+        """
+        Download each selected mega path into local_path.
+        NOTE: on_download_start() was already called by _run_file_selector,
+        so we only call it again if we were queued and are now resuming.
+        """
         added_to_queue, event = await check_running_tasks(self.listener)
         if added_to_queue:
             LOGGER.info(f"Added to Queue/Download: {self.name}")
@@ -387,26 +386,19 @@ class MegaAppListener:
                 task_dict[self.listener.mid] = QueueStatus(
                     self.listener, self.gid, "Dl"
                 )
-            await self.listener.on_download_start()
-            if self.listener.multi <= 1:
-                await send_status_message(self.listener.message)
+            # on_download_start already called — just wait for queue slot
             await event.wait()
             if self.listener.is_cancelled:
                 return
 
+        # Switch status from PAUSED → DOWNLOAD
         self.mega_status = MegaDownloadStatus(
             self.listener, self, self.gid, MirrorStatus.STATUS_DOWNLOAD
         )
         async with task_dict_lock:
             task_dict[self.listener.mid] = self.mega_status
 
-        if added_to_queue:
-            LOGGER.info(f"Start Queued Download from Mega (selected): {self.name}")
-        else:
-            LOGGER.info(f"Download from Mega (selected {len(mega_paths)} files): {self.name}")
-            await self.listener.on_download_start()
-            if self.listener.multi <= 1:
-                await send_status_message(self.listener.message)
+        LOGGER.info(f"Download from Mega (selected {len(mega_paths)} files): {self.name}")
 
         await makedirs(local_path, exist_ok=True)
 

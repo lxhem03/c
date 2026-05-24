@@ -61,72 +61,83 @@ async def mega_cleanup():
 
 
 # ------------------------------------------------------------------
-# MegaCMD recursive listing helper (uses mega-ls -lr, already in base image)
+# MegaCMD recursive listing helper
 # ------------------------------------------------------------------
 
 async def megals_recursive(mega_path: str) -> list[dict]:
     """
-    Use MegaCMD's `mega-ls -lr <path>` to recursively list all files
-    with sizes in a single call.
+    Two-step approach using only standard MegaCMD commands:
 
-    mega-ls -l output format per line:
-      FLAGS  SIZE  DATE  TIME  NAME
-      drwxr-xr-x  -  2024-01-15  10:30:00  SubFolder
-      -rw-r--r--  123456789  2024-01-15  10:30:00  file.mkv
+    Step 1 — mega-find <path>
+      Lists every node recursively, one full virtual path per line.
+      Works on virtual paths (/wzml_xxx/FolderName) after mega-import.
+      Example output:
+        /wzml_abc/Anime/Episode01.mkv
+        /wzml_abc/Anime/Episode02.mkv
+        /wzml_abc/Subs/English.ass
 
-    With -r (recursive), MegaCMD prints a blank line + "NAME:" header
-    before each sub-directory's contents, e.g.:
+    Step 2 — mega-ls -l <dir> once per unique parent directory
+      Parses size for each item (folders show "-", files show bytes).
 
-      /wzml_abc/Folder:
-      drwxr-xr-x  -   ...  SubA
-      -rw-r--r--  100 ...  file1.mkv
-
-      /wzml_abc/Folder/SubA:
-      -rw-r--r--  200 ...  file2.mkv
-
-    We parse this format to rebuild full paths and sizes.
-    Folders (size == "-") are skipped.
-    Returns list of {path, name, size}.
+    Returns list of {path, name, size} for files only.
     """
-    stdout, stderr, ret = await cmd_exec(["mega-ls", "-lr", mega_path])
+    # ── Step 1: get all paths recursively via mega-find ─────────────
+    stdout, stderr, ret = await cmd_exec(["mega-find", mega_path])
     if ret != 0 or not stdout.strip():
-        LOGGER.error(f"mega-ls -lr failed for {mega_path}: {stderr}")
+        LOGGER.error(f"mega-find failed for {mega_path}: {stderr!r}")
         return []
 
+    all_paths = [
+        line.strip()
+        for line in stdout.strip().splitlines()
+        if line.strip() and line.strip() != mega_path
+    ]
+
+    if not all_paths:
+        LOGGER.error(f"mega-find returned no results for {mega_path}")
+        return []
+
+    LOGGER.info(f"mega-find found {len(all_paths)} nodes under {mega_path}")
+
+    # ── Step 2: get sizes — one mega-ls -l per unique parent dir ────
+    parent_dirs: set[str] = set()
+    for p in all_paths:
+        parent = p.rsplit("/", 1)[0] if "/" in p else mega_path
+        parent_dirs.add(parent)
+
+    size_map: dict[str, int] = {}
+
+    for parent_dir in parent_dirs:
+        ls_out, ls_err, ls_ret = await cmd_exec(["mega-ls", "-l", parent_dir])
+        if ls_ret != 0 or not ls_out.strip():
+            LOGGER.warning(f"mega-ls -l failed for {parent_dir}: {ls_err!r}")
+            continue
+        for line in ls_out.strip().splitlines():
+            if not line.strip():
+                continue
+            match = re_search(
+                r"^[d\-][rwx\-]{9}\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$",
+                line,
+            )
+            if not match:
+                continue
+            size_str = match.group(1)
+            name = match.group(2).strip()
+            if size_str == "-":
+                continue
+            size_map[f"{parent_dir}/{name}"] = int(size_str)
+
+    # ── Step 3: return only confirmed file paths ─────────────────────
     files: list[dict] = []
-    current_dir = mega_path.rstrip("/")
+    for p in all_paths:
+        if p in size_map:
+            files.append({
+                "path": p,
+                "name": p.rsplit("/", 1)[-1],
+                "size": size_map[p],
+            })
 
-    for raw_line in stdout.splitlines():
-        line = raw_line.rstrip()
-
-        # Empty line — separator between sections, skip
-        if not line:
-            continue
-
-        # Directory header line: ends with ":"  e.g.  "/wzml_abc/Folder:"
-        # MegaCMD prints these with no leading whitespace
-        if line.endswith(":") and not line[0].isspace():
-            current_dir = line[:-1].rstrip("/")
-            continue
-
-        # File/folder entry line
-        match = re_search(
-            r"^[d\-][rwx\-]{9}\s+(\d+|-)\s+\S+\s+\d{2}:\d{2}:\d{2}\s+(.+)$",
-            line,
-        )
-        if not match:
-            continue
-
-        size_str = match.group(1)
-        name = match.group(2).strip()
-
-        # Skip folders (size is "-")
-        if size_str == "-":
-            continue
-
-        full_path = f"{current_dir}/{name}"
-        files.append({"path": full_path, "name": name, "size": int(size_str)})
-
+    LOGGER.info(f"megals_recursive: resolved {len(files)} files with sizes")
     return files
 
 

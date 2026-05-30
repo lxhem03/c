@@ -65,6 +65,7 @@ advanced_options = [
     "YT_DLP_OPTIONS",
     "UPLOAD_PATHS",
     "USER_COOKIE_FILE",
+    "USER_SESSION_STRING",
 ]
 yt_options = ["YT_DESP", "YT_TAGS", "YT_CATEGORY_ID", "YT_PRIVACY_STATUS"]
 
@@ -261,6 +262,11 @@ Here I will explain how to use mltb.* which is reference to files you want to wo
         "File",
         "User's YT-DLP Cookie File to authenticate access to websites and youtube.",
         "<i>Send your cookie file (e.g., cookies.txt or abc.txt).</i> \n┖ <b>Time Left :</b> <code>60 sec</code>",
+    ),
+    "USER_SESSION_STRING": (
+        "String",
+        "Your personal Pyrogram session string. Allows the bot to download from private/forward-restricted Telegram chats that your account has access to. Generate it with <code>python3 -c \"from pyrogram import Client; Client('s', api_id=API_ID, api_hash='API_HASH').run()\"</code> then export the session string. <b>Keep this secret!</b>",
+        "<i>Send your Pyrogram session string. It will be stored encrypted. The bot will use your account to fetch content from private/restricted chats.</i>\n┖ <b>Time Left :</b> <code>60 sec</code>",
     ),
     "GOFILE_TOKEN": (
         "String",
@@ -861,6 +867,11 @@ async def get_user_settings(from_user, stype="main"):
             "YT Cookie File", f"userset {user_id} menu USER_COOKIE_FILE"
         )
 
+        user_session_msg = "Set ✓" if user_dict.get("USER_SESSION_STRING") else "Not Set"
+        buttons.data_button(
+            "My TG Session String", f"userset {user_id} menu USER_SESSION_STRING"
+        )
+
         buttons.data_button("Back", f"userset {user_id} back", "footer")
         buttons.data_button("Close", f"userset {user_id} close", "footer")
         btns = buttons.build_menu(1)
@@ -872,7 +883,8 @@ async def get_user_settings(from_user, stype="main"):
 ┠ <b>Excluded Extensions</b> → <code>{ex_ex}</code>
 ┠ <b>Upload Paths</b> → <b>{upload_paths}</b>
 ┠ <b>YT-DLP Options</b> → <code>{ytopt}</code>
-┖ <b>YT User Cookie File</b> → <b>{user_cookie_msg}</b>"""
+┠ <b>YT User Cookie File</b> → <b>{user_cookie_msg}</b>
+┖ <b>Personal TG Session</b> → <b>{user_session_msg}</b>"""
     elif stype == "yttools":
         buttons.data_button("YT Description", f"userset {user_id} menu YT_DESP")
         yt_desp_val = user_dict.get(
@@ -1093,6 +1105,35 @@ async def set_option(_, message, option, rfunc):
         else:
             await send_message(message, "It must be dict!")
             return
+    elif option == "USER_SESSION_STRING":
+        value = value.strip()
+        if len(value) < 100:
+            await send_message(
+                message,
+                "❌ That doesn't look like a valid Pyrogram session string (too short). Generate one with Pyrogram's <code>export_session_string()</code>.",
+            )
+            return
+        # Validate the session string by briefly connecting
+        try:
+            from pyrogram import Client as _PyroClient
+            from bot.core.config_manager import Config as _Cfg
+            _test_client = _PyroClient(
+                "validate_session",
+                api_id=_Cfg.TELEGRAM_API,
+                api_hash=_Cfg.TELEGRAM_HASH,
+                session_string=value,
+                in_memory=True,
+                no_updates=True,
+            )
+            await _test_client.start()
+            _me = _test_client.me
+            await _test_client.stop()
+        except Exception as e:
+            await send_message(
+                message,
+                f"❌ Session string validation failed: <code>{e}</code>\nMake sure you generated it with the same API_ID/API_HASH as this bot.",
+            )
+            return
     update_user_ldata(user_id, option, value)
     await delete_message(message)
     await rfunc()
@@ -1157,6 +1198,8 @@ async def get_menu(option, message, user_id):
         val = "<b>Exists</b>"
     elif option == "LEECH_SPLIT_SIZE":
         val = get_readable_file_size(val)
+    elif option == "USER_SESSION_STRING":
+        val = "<b>Set ✓</b> (hidden for security)" if val else "<b>Not Set</b>"
     elif option == "METADATA":
         current_meta_val = user_dict.get(option)
         if isinstance(current_meta_val, dict) and current_meta_val:
@@ -1399,6 +1442,9 @@ async def edit_user_settings(client, query):
         await get_menu(data[3], message, user_id)
     elif data[2] == "reset":
         await query.answer("Reset Done!", show_alert=True)
+        if data[3] == "USER_SESSION_STRING":
+            from ..helper.mirror_leech_utils.download_utils.telegram_download import stop_personal_client
+            await stop_personal_client(user_id)
         user_dict.pop(data[3], None)
         await database.update_user_data(user_id)
         await get_menu(data[3], message, user_id)

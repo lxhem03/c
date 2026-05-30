@@ -23,6 +23,7 @@ lxml
 motor
 natsort
 par2cmdline-turbo
+cryptography
 pillow
 psutil
 pycountry

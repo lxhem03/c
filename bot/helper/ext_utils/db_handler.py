@@ -1,4 +1,6 @@
 from importlib import import_module
+from base64 import b64encode, b64decode
+from cryptography.fernet import Fernet, InvalidToken
 
 from aiofiles import open as aiopen
 from aiofiles.os import path as aiopath
@@ -110,6 +112,8 @@ class DbManager:
             return
         data = user_data.get(user_id, {})
         data = data.copy()
+        # Store USER_SESSION_STRING encrypted separately; pop from plain data
+        raw_session = data.pop("USER_SESSION_STRING", None)
         for key in ("THUMBNAIL", "RCLONE_CONFIG", "TOKEN_PICKLE", "USER_COOKIE_FILE"):
             data.pop(key, None)
         pipeline = [
@@ -131,6 +135,7 @@ class DbManager:
                                                     "RCLONE_CONFIG",
                                                     "TOKEN_PICKLE",
                                                     "USER_COOKIE_FILE",
+                                                    "USER_SESSION_ENC",
                                                 ],
                                             ]
                                         },
@@ -145,6 +150,35 @@ class DbManager:
         await self.db.users[TgClient.ID].update_one(
             {"_id": user_id}, pipeline, upsert=True
         )
+        # Encrypt and store USER_SESSION_STRING separately
+        if raw_session is not None:
+            if raw_session:
+                enc = self._encrypt_session(raw_session)
+                await self.db.users[TgClient.ID].update_one(
+                    {"_id": user_id}, {"$set": {"USER_SESSION_ENC": enc}}, upsert=True
+                )
+            else:
+                await self.db.users[TgClient.ID].update_one(
+                    {"_id": user_id}, {"$unset": {"USER_SESSION_ENC": ""}}, upsert=True
+                )
+
+    def _get_fernet(self):
+        """Derive a Fernet key from BOT_TOKEN (deterministic, no extra config)."""
+        import hashlib
+        token_bytes = Config.BOT_TOKEN.encode()
+        key_bytes = hashlib.sha256(token_bytes).digest()
+        from base64 import urlsafe_b64encode
+        return Fernet(urlsafe_b64encode(key_bytes))
+
+    def _encrypt_session(self, session_string: str) -> str:
+        return self._get_fernet().encrypt(session_string.encode()).decode()
+
+    def _decrypt_session(self, encrypted: str) -> str:
+        try:
+            return self._get_fernet().decrypt(encrypted.encode()).decode()
+        except (InvalidToken, Exception):
+            LOGGER.error("Failed to decrypt user session string — invalid token or key mismatch.")
+            return ""
 
     async def update_user_doc(self, user_id, key, path=""):
         if self._return:

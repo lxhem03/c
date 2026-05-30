@@ -190,6 +190,15 @@ async def load_settings():
                     if row.get(key):
                         await save_file(path, row[key])
                         row[key] = path
+                # Decrypt per-user session string if present
+                if row.get("USER_SESSION_ENC"):
+                    try:
+                        decrypted = database._decrypt_session(row["USER_SESSION_ENC"])
+                        if decrypted:
+                            row["USER_SESSION_STRING"] = decrypted
+                    except Exception as e:
+                        LOGGER.error(f"Failed to decrypt USER_SESSION_ENC for uid {uid}: {e}")
+                    del row["USER_SESSION_ENC"]
                 user_data[uid] = row
             LOGGER.info("Users Data has been imported from MongoDB")
 

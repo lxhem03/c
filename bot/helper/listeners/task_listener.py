@@ -4,6 +4,7 @@ from time import time
 from mimetypes import guess_type
 from contextlib import suppress
 from os import path as ospath
+from pyrogram.enums import ButtonStyle
 
 from aiofiles.os import listdir, remove, path as aiopath
 from requests import utils as rutils
@@ -41,13 +42,6 @@ from ..ext_utils.files_utils import (
 from ..ext_utils.links_utils import is_gdrive_id
 from ..ext_utils.status_utils import get_readable_file_size, get_readable_time
 from ..ext_utils.task_manager import check_running_tasks, start_from_queued
-from ..mirror_leech_utils.uphoster_utils.gofile_utils.upload import GoFileUpload
-from ..mirror_leech_utils.uphoster_utils.buzzheavier_utils.upload import (
-    BuzzHeavierUpload,
-)
-from ..mirror_leech_utils.uphoster_utils.pixeldrain_utils.upload import (
-    PixelDrainUpload,
-)
 from ..mirror_leech_utils.uphoster_utils.multi_upload import MultiUphosterUpload
 from ..mirror_leech_utils.gdrive_utils.upload import GoogleDriveUpload
 from ..mirror_leech_utils.rclone_utils.transfer import RcloneTransferHelper
@@ -104,19 +98,19 @@ class TaskListener(TaskConfig):
         if self.bot_pm and self.is_super_chat:
             self.pm_msg = await send_message(
                 self.user_id,
-                f"""<blockquote>➲ <b><u>Task Started :</u></b>
+                f"""➲ <b><u>Task Started :</u></b>
 ┃
-┖ <b>Link:</b> <a href='{self.source_url}'>Click Here</a></blockquote>
+┖ <b>Link:</b> <a href='{self.source_url}'>Click Here</a>
 """,
             )
         if Config.LINKS_LOG_ID:
             await send_message(
                 Config.LINKS_LOG_ID,
-                f"""<blockquote>➲  <b><u>{mode_name} Started:</u></b>
+                f"""➲  <b><u>{mode_name} Started:</u></b>
  ┃
  ┠ <b>User :</b> {self.tag} ( #ID{self.user_id} )
  ┠ <b>Message Link :</b> <a href='{self.message.link}'>Click Here</a>
- ┗ <b>Link:</b> <a href='{self.source_url}'>Click Here</a></blockquote>
+ ┗ <b>Link:</b> <a href='{self.source_url}'>Click Here</a>
  """,
             )
         if (
@@ -404,7 +398,7 @@ class TaskListener(TaskConfig):
         ):
             await database.rm_complete_task(self.message.link)
         msg = (
-            f"<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>\n\n<blockquote><b><i>{escape(self.name)}</i></b>\n│"
+            f"<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote><b><i>{escape(self.name)}</i></b>\n│"
             f"\n┟ <b>Task Size</b> → {get_readable_file_size(self.size)}"
             f"\n┠ <b>Time Taken</b> → {get_readable_time(time() - self.message.date.timestamp())}"
             f"\n┠ <b>In Mode</b> → {self.mode[0]}"
@@ -417,17 +411,19 @@ class TaskListener(TaskConfig):
                 msg += "\n┠ <b>Type</b> → Playlist"
                 msg += f"\n┖ <b>Total Videos</b> → {files}"
                 if link:
-                    buttons.url_button("🔗 View Playlist", link)
+                    buttons.url_button(
+                        "🔗 View Playlist", link, style=ButtonStyle.PRIMARY
+                    )
                 user_message = f"{self.tag}\nYour playlist ({files} videos) has been uploaded to YouTube successfully!"
             else:
                 msg += "\n┖ <b>Type</b> → Video"
                 if link:
-                    buttons.url_button("🔗 View Video", link)
+                    buttons.url_button("🔗 View Video", link, style=ButtonStyle.PRIMARY)
                 user_message = (
                     f"{self.tag}\nYour video has been uploaded to YouTube successfully!"
                 )
 
-            msg += f"\n\n<b>Task By: </b>{self.tag}</blockquote>"
+            msg += f"\n\n<b>Task By: </b>{self.tag}"
 
             button = buttons.build_menu(1) if link else None
 
@@ -440,12 +436,12 @@ class TaskListener(TaskConfig):
             msg += f"\n<b>Total Files: </b>{folders}"
             if mime_type != 0:
                 msg += f"\n┠ <b>Corrupted Files</b> → {mime_type}"
-            msg += f"\n┖ <b>Task By</b> ~ {self.tag}</blockquote>\n\n"
+            msg += f"\n┖ <b>Task By</b> → {self.tag}\n\n"
 
             if self.bot_pm:
                 pmsg = msg
                 pmsg += "〶 <b><u>Action Performed :</u></b>\n"
-                pmsg += "⋗ <i>File(s) have been sent to User PM</i></blockquote>\n\n"
+                pmsg += "⋗ <i>File(s) have been sent to User PM</i>\n\n"
                 if self.is_super_chat:
                     await send_message(self.message, pmsg)
 
@@ -457,14 +453,14 @@ class TaskListener(TaskConfig):
                 fmsg = ""
                 for index, (link, name) in enumerate(files.items(), start=1):
                     chat_id, msg_id = link.split("/")[-2:]
-                    fmsg += f"<blockquote>{index}. <a href='{link}'>{name}</a>"
+                    fmsg += f"{index}. <a href='{link}'>{name}</a>"
                     if Config.MEDIA_STORE and (
                         self.is_super_chat or Config.LEECH_DUMP_CHAT
                     ):
                         if chat_id.isdigit():
                             chat_id = f"-100{chat_id}"
                         flink = f"https://t.me/{TgClient.BNAME}?start={encode_slink('file' + chat_id + '&&' + msg_id)}"
-                        fmsg += f"\n┖ <b>Get Media</b> ~ <a href='{flink}'>Store Link</a> | <a href='https://t.me/share/url?url={flink}'>Share Link</a></blockquote>"
+                        fmsg += f"\n┖ <b>Get Media</b> → <a href='{flink}'>Store Link</a> | <a href='https://t.me/share/url?url={flink}'>Share Link</a>"
                     fmsg += "\n"
                     if len(fmsg.encode() + msg.encode()) > 4000:
                         await send_message(log_chat, msg + fmsg)
@@ -503,7 +499,7 @@ class TaskListener(TaskConfig):
             ):
                 buttons = ButtonMaker()
                 if link and Config.SHOW_CLOUD_LINK:
-                    buttons.url_button("☁️ Cloud Link", link)
+                    buttons.url_button("☁️ Cloud Link", link, style=ButtonStyle.PRIMARY)
                 elif multi_links:
                     for name, url in multi_links:
                         buttons.url_button(name, url)
@@ -515,7 +511,9 @@ class TaskListener(TaskConfig):
                     share_url = f"{Config.RCLONE_SERVE_URL}/{remote}/{url_path}"
                     if mime_type == "Folder":
                         share_url += "/"
-                    buttons.url_button("🔗 Rclone Link", share_url)
+                    buttons.url_button(
+                        "🔗 Rclone Link", share_url, style=ButtonStyle.PRIMARY
+                    )
                 if not rclone_path and dir_id:
                     INDEX_URL = ""
                     if self.private_link:
@@ -525,10 +523,16 @@ class TaskListener(TaskConfig):
                     if INDEX_URL and self.name:
                         safe_name = rutils.quote(self.name.strip("/"))
                         share_url = f"{INDEX_URL}/{safe_name}"
-                        buttons.url_button("⚡ Index Link", share_url)
+                        if mime_type == "Folder":
+                            share_url += "/"
+                        buttons.url_button(
+                            "⚡ Index Link", share_url, style=ButtonStyle.PRIMARY
+                        )
                         if mime_type.startswith(("image", "video", "audio")):
                             share_urls = f"{share_url}?a=view"
-                            buttons.url_button("🌐 View Link", share_urls)
+                            buttons.url_button(
+                                "🌐 View Link", share_urls, style=ButtonStyle.PRIMARY
+                            )
                 button = buttons.build_menu(2)
             else:
                 if not multi_link_msg:

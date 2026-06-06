@@ -1,4 +1,5 @@
 from asyncio import gather, sleep, wait_for, TimeoutError
+from pyrogram.enums import ButtonStyle
 from platform import platform, version
 from re import search as research
 from time import time
@@ -56,7 +57,14 @@ commands = {
     "aiohttp": (["uv", "pip", "show", "aiohttp"], r"Version: ([\d.]+)"),
     "pyrotgfork": (["uv", "pip", "show", "pyrotgfork"], r"Version: ([\d.]+)"),
     "gapi": (["uv", "pip", "show", "google-api-python-client"], r"Version: ([\d.]+)"),
-    "mega": (["mega-version"], r"version: ([\d.]+)"),
+    "mega": (
+        [
+            "python3",
+            "-c",
+            "from mega import MegaApi; print(MegaApi('test').getVersion())",
+        ],
+        r"v?([\d.]+)",
+    ),
 }
 
 
@@ -78,43 +86,43 @@ async def get_stats(event, key="home"):
         memory = virtual_memory()
         disk_io = disk_io_counters()
         msg = f"""⌬ <b><i>BOT STATISTICS :</i></b>
-┖ <blockquote><b>Bot Uptime :</b> {get_readable_time(time() - bot_start_time)}</blockquote>
+┖ <b>Bot Uptime :</b> {get_readable_time(time() - bot_start_time)}
 
-<blockquote>┎ <b><i>RAM ( MEMORY ) :</i></b>
+┎ <b><i>RAM ( MEMORY ) :</i></b>
 ┃ {get_progress_bar_string(memory.percent)} {memory.percent}%
-┖ <b>U :</b> {get_readable_file_size(memory.used)} | <b>F :</b> {get_readable_file_size(memory.available)} | <b>T :</b> {get_readable_file_size(memory.total)}</blockquote>
+┖ <b>U :</b> {get_readable_file_size(memory.used)} | <b>F :</b> {get_readable_file_size(memory.available)} | <b>T :</b> {get_readable_file_size(memory.total)}
 
-<blockquote>┎ <b><i>SWAP MEMORY :</i></b>
+┎ <b><i>SWAP MEMORY :</i></b>
 ┃ {get_progress_bar_string(swap.percent)} {swap.percent}%
-┖ <b>U :</b> {get_readable_file_size(swap.used)} | <b>F :</b> {get_readable_file_size(swap.free)} | <b>T :</b> {get_readable_file_size(swap.total)}</blockquote>
+┖ <b>U :</b> {get_readable_file_size(swap.used)} | <b>F :</b> {get_readable_file_size(swap.free)} | <b>T :</b> {get_readable_file_size(swap.total)}
 
-<blockquote>┎ <b><i>DISK :</i></b>
+┎ <b><i>DISK :</i></b>
 ┃ {get_progress_bar_string(disk)} {disk}%
 ┃ <b>Total Disk Read :</b> {f"{get_readable_file_size(disk_io.read_bytes)} ({get_readable_time(disk_io.read_time / 1000)})" if disk_io else "Access Denied"}
 ┃ <b>Total Disk Write :</b> {f"{get_readable_file_size(disk_io.write_bytes)} ({get_readable_time(disk_io.write_time / 1000)})" if disk_io else "Access Denied"}
-┖ <b>U :</b> {get_readable_file_size(used)} | <b>F :</b> {get_readable_file_size(free)} | <b>T :</b> {get_readable_file_size(total)}</blockquote>
+┖ <b>U :</b> {get_readable_file_size(used)} | <b>F :</b> {get_readable_file_size(free)} | <b>T :</b> {get_readable_file_size(total)}
 """
     elif key == "stsys":
         cpu_usage = cpu_percent(interval=0.5)
-        msg = f"""<blockquote>⌬ <b><i>OS SYSTEM :</i></b>
+        msg = f"""⌬ <b><i>OS SYSTEM :</i></b>
 ┟ <b>OS Uptime :</b> {get_readable_time(time() - boot_time())}
 ┠ <b>OS Version :</b> {version()}
-┖ <b>OS Arch :</b> {platform()}</blockquote>
+┖ <b>OS Arch :</b> {platform()}
 
-<blockquote>⌬ <b><i>NETWORK STATS :</i></b>
+⌬ <b><i>NETWORK STATS :</i></b>
 ┟ <b>Upload Data:</b> {get_readable_file_size(net_io_counters().bytes_sent)}
 ┠ <b>Download Data:</b> {get_readable_file_size(net_io_counters().bytes_recv)}
 ┠ <b>Pkts Sent:</b> {str(net_io_counters().packets_sent)[:-3]}k
 ┠ <b>Pkts Received:</b> {str(net_io_counters().packets_recv)[:-3]}k
-┖ <b>Total I/O Data:</b> {get_readable_file_size(net_io_counters().bytes_recv + net_io_counters().bytes_sent)}</blockquote>
+┖ <b>Total I/O Data:</b> {get_readable_file_size(net_io_counters().bytes_recv + net_io_counters().bytes_sent)}
 
-<blockquote>┎ <b>CPU :</b>
+┎ <b>CPU :</b>
 ┃ {get_progress_bar_string(cpu_usage)} {cpu_usage}%
 ┠ <b>CPU Frequency :</b> {f"{cpu_freq().current / 1000:.2f} GHz" if cpu_freq() else "Access Denied"}
 ┠ <b>System Avg Load :</b> {"%, ".join(str(round((x / cpu_count() * 100), 2)) for x in getloadavg())}%, (1m, 5m, 15m)
 ┠ <b>P-Core(s) :</b> {cpu_count(logical=False)} | <b>V-Core(s) :</b> {cpu_count(logical=True) - cpu_count(logical=False)}
 ┠ <b>Total Core(s) :</b> {cpu_count(logical=True)}
-┖ <b>Usable CPU(s) :</b> {len(Process().cpu_affinity())}</blockquote>
+┖ <b>Usable CPU(s) :</b> {len(Process().cpu_affinity())}
 """
     elif key == "strepo":
         last_commit, changelog = "No Data", "N/A"
@@ -136,18 +144,18 @@ async def get_stats(event, key="home"):
                 True,
             )
         )[0]
-        msg = f"""<blockquote>⌬ <b><i>Repo Statistics :</i></b>
+        msg = f"""⌬ <b><i>Repo Statistics :</i></b>
 │
 ┟ <b>Bot Updated :</b> {last_commit}
 ┠ <b>Current Version :</b> {get_version()}
 ┠ <b>Latest Version :</b> {official_v}
 ┖ <b>Last ChangeLog :</b> {changelog}
 
-⌬ <b>REMARKS :</b> <code>{compare_versions(get_version(), official_v)}</code></blockquote>
+⌬ <b>REMARKS :</b> <code>{compare_versions(get_version(), official_v)}</code>
     """
     elif key == "stpkgs":
         ver = bot_cache.get("eng_versions", {})
-        msg = f"""<blockquote>⌬ <b><i>Packages Statistics :</i></b>
+        msg = f"""⌬ <b><i>Packages Statistics :</i></b>
 │
 ┟ <b>python:</b> {ver.get("python", "N/A")}
 ┠ <b>aria2:</b> {ver.get("aria2", "N/A")}
@@ -160,10 +168,10 @@ async def get_stats(event, key="home"):
 ┠ <b>Aiohttp:</b> {ver.get("aiohttp", "N/A")}
 ┠ <b>PyroTgFork:</b> {ver.get("pyrotgfork", "N/A")}
 ┠ <b>Google API:</b> {ver.get("gapi", "N/A")}
-┖ <b>Mega CMD:</b> {ver.get("mega", "N/A")}</blockquote>
+┖ <b>Mega CMD:</b> {ver.get("mega", "N/A")}
 """
     elif key == "tlimits":
-        msg = f"""<blockquote>⌬ <b><i>Bot Task Limits :</i></b>
+        msg = f"""⌬ <b><i>Bot Task Limits :</i></b>
 │
 ┟ <b>Direct Limit :</b> {Config.DIRECT_LIMIT or "∞"} GB
 ┠ <b>Torrent Limit :</b> {Config.TORRENT_LIMIT or "∞"} GB
@@ -183,7 +191,7 @@ async def get_stats(event, key="home"):
 ┟ <b>Token Validity :</b> {get_readable_time(Config.VERIFY_TIMEOUT) if Config.VERIFY_TIMEOUT else "Disabled"}
 ┠ <b>User Time Limit :</b> {Config.USER_TIME_INTERVAL or "0"}s / task
 ┠ <b>User Max Tasks :</b> {Config.USER_MAX_TASKS or "∞"}
-┖ <b>Bot Max Tasks :</b> {Config.BOT_MAX_TASKS or "∞"}</blockquote>
+┖ <b>Bot Max Tasks :</b> {Config.BOT_MAX_TASKS or "∞"}
     """
 
     elif key == "systasks":
@@ -209,7 +217,7 @@ async def get_stats(event, key="home"):
         except Exception:
             processes = []
 
-        msg = "<blockquote>⌬ <b><i>System Tasks (High Usage)</i></b></blockquote>\n│\n"
+        msg = "⌬ <b><i>System Tasks (High Usage)</i></b>\n│\n"
 
         if processes:
             for i, proc in enumerate(processes, 1):
@@ -217,16 +225,18 @@ async def get_stats(event, key="home"):
                 cpu = proc.get("cpu_percent", 0)
                 mem = proc.get("memory_percent", 0)
                 user = proc.get("username", "Unknown")[:10]
-                msg += f"<blockquote>┠ <b>{i:2d}.</b> <code>{name}</code>\n┃    🔹 <b>CPU:</b> {cpu:.1f}% | <b>MEM:</b> {mem:.1f}%\n┃    👤 <b>User:</b> {user} | <b>PID:</b> {proc['pid']}</blockquote>\n"
+                msg += f"┠ <b>{i:2d}.</b> <code>{name}</code>\n┃    🔹 <b>CPU:</b> {cpu:.1f}% | <b>MEM:</b> {mem:.1f}%\n┃    👤 <b>User:</b> {user} | <b>PID:</b> {proc['pid']}\n"
                 btns.data_button(f"{i}", f"stats {user_id} killproc {proc['pid']}")
-            msg += "<blockquote>┃\n┖ <i>Click serial number to terminate process</i></blockquote>"
+            msg += "┃\n┖ <i>Click serial number to terminate process</i>"
         else:
-            msg += "<blockquote>┃\n┖ <i>No high usage processes found</i></blockquote>"
+            msg += "┃\n┖ <i>No high usage processes found</i>"
 
         btns.data_button("🔄 Refresh", f"stats {user_id} systasks", "header")
 
     btns.data_button("Back", f"stats {user_id} home", "footer")
-    btns.data_button("Close", f"stats {user_id} close", "footer")
+    btns.data_button(
+        "Close", f"stats {user_id} close", "footer", style=ButtonStyle.DANGER
+    )
     return msg, btns.build_menu(8 if key == "systasks" else 2)
 
 
@@ -242,13 +252,13 @@ async def stats_pages(_, query):
     message = query.message
     user_id = query.from_user.id
     if user_id != int(data[1]):
-        await query.answer("Not Yours! 😏", show_alert=True)
+        await query.answer("Not Yours!", show_alert=True)
     elif data[2] == "close":
         await query.answer()
         await delete_message(message, message.reply_to_message)
     elif data[2] == "killproc":
-        if data[2] == "systasks" and not await CustomFilters.owner(_, query):
-            await query.answer("Sorry! You cannot Kill System Tasks! 😂", show_alert=True)
+        if not await CustomFilters.owner(_, query):
+            await query.answer("Sorry! You cannot Kill System Tasks!", show_alert=True)
             return
         pid = int(data[3])
         try:
@@ -264,11 +274,11 @@ async def stats_pages(_, query):
             await query.answer(f"{status}: {proc_name} (PID: {pid})", show_alert=True)
         except NoSuchProcess:
             await query.answer(
-                "❌ Process not found or already terminated! 😐", show_alert=True
+                "❌ Process not found or already terminated!", show_alert=True
             )
         except AccessDenied:
             await query.answer(
-                "❌ Access denied! Cannot kill this process. 😂", show_alert=True
+                "❌ Access denied! Cannot kill this process.", show_alert=True
             )
         except Exception as e:
             await query.answer(f"❌ Error: {str(e)}", show_alert=True)
@@ -277,7 +287,7 @@ async def stats_pages(_, query):
         await edit_message(message, msg, btns)
     else:
         if data[2] == "systasks" and not await CustomFilters.sudo(_, query):
-            await query.answer("Sorry! You cannot open System Tasks! 🥱", show_alert=True)
+            await query.answer("Sorry! You cannot open System Tasks!", show_alert=True)
             return
         await query.answer()
         msg, btns = await get_stats(query, data[2])
@@ -303,9 +313,9 @@ async def retry_mega_version():
     version = await get_version_async(command, regex, timeout=10)
     if version != "Timeout" and not version.startswith("Exception"):
         bot_cache["eng_versions"]["mega"] = version
-        LOGGER.info(f"MegaCMD Version Fetched: {version}")
+        LOGGER.info(f"MegaSDK Version Fetched: {version}")
     else:
-        LOGGER.warning(f"Failed to fetch MegaCMD Version: {version}")
+        LOGGER.warning(f"Failed to fetch MegaSDK Version: {version}")
 
 
 @new_task

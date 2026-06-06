@@ -1,4 +1,5 @@
 from html import escape
+from pyrogram.enums import ButtonStyle
 from time import monotonic, time
 from uuid import uuid4
 from re import match
@@ -33,9 +34,9 @@ async def start(_, message):
     lang = Language()
     buttons = ButtonMaker()
     buttons.url_button(
-        lang.START_BUTTON1, "https://t.me/AGleechgrp"
+        lang.START_BUTTON1, "https://www.github.com/SilentDemonSD/WZML-X"
     )
-    buttons.url_button(lang.START_BUTTON2, "https://t.me/TgXNectar")
+    buttons.url_button(lang.START_BUTTON2, "https://t.me/WZML_X")
     reply_markup = buttons.build_menu(2)
 
     if len(message.command) > 1 and message.command[1] == "wzmlx":
@@ -93,13 +94,13 @@ async def start(_, message):
     elif Config.BOT_PM:
         await send_message(
             message,
-            "<i>Now, Bot will send you all your files and links here. Start Using Now...</i>\n\n<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>",
+            "<i>Now, Bot will send you all your files and links here. Start Using Now...</i>",
             reply_markup,
         )
     else:
         await send_message(
             message,
-            "<i>Bot can mirror/leech from links|tgfiles|torrents|nzb|rclone-cloud to any rclone cloud, Google Drive or to telegram.\n\n📍 Open /us or start the bot in the group and try again</i>\n\n<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>",
+            "<i>Bot can mirror/leech from links|tgfiles|torrents|nzb|rclone-cloud to any rclone cloud, Google Drive or to telegram.\n\n⚠️ You Are not authorized user! Deploy your own WZML-X bot</i>",
             reply_markup,
         )
     await database.set_pm_users(userid)
@@ -125,7 +126,11 @@ async def start_cb(_, query):
     kb = query.message.reply_markup.inline_keyboard[1:]
     kb.insert(
         0,
-        [InlineKeyboardButton("✅️ Activated ✅", callback_data="start pass activated")],
+        [
+            InlineKeyboardButton(
+                "✅️ Activated ✅", callback_data="start pass activated"
+            )
+        ],
     )
     await edit_reply_markup(query.message, InlineKeyboardMarkup(kb))
 
@@ -176,7 +181,7 @@ async def log(_, message):
     buttons = ButtonMaker()
     buttons.data_button("Log Disp", f"log {uid} disp")
     buttons.data_button("Web Log", f"log {uid} web")
-    buttons.data_button("Close", f"log {uid} close")
+    buttons.data_button("Close", f"log {uid} close", style=ButtonStyle.DANGER)
     await send_file(message, "log.txt", buttons=buttons.build_menu(2))
 
 
@@ -211,7 +216,7 @@ async def log_cb(_, query):
             text = f"<b>Showing Last {len(res)} Lines from log.txt:</b> \n\n----------<b>START LOG</b>----------\n\n<blockquote expandable>{escape('\n'.join(reversed(res)))}</blockquote>\n----------<b>END LOG</b>----------"
 
             btn = ButtonMaker()
-            btn.data_button("Close", f"log {user_id} close")
+            btn.data_button("Close", f"log {user_id} close", style=ButtonStyle.DANGER)
             await send_message(message, text, btn.build_menu(1))
             await edit_reply_markup(message, None)
         except Exception as err:
@@ -248,7 +253,7 @@ async def log_cb(_, query):
         if resp.status_code == 200:
             await query.answer("Generating..")
             btn = ButtonMaker()
-            btn.url_button("📨 Web Paste (SB)", resp.url)
+            btn.url_button("📨 Web Paste (SB)", resp.url, style=ButtonStyle.PRIMARY)
             await edit_reply_markup(message, btn.build_menu(1))
         else:
             await query.answer("Web Paste Failed ! Check Logs", show_alert=True)

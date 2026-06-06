@@ -134,6 +134,7 @@ class TaskConfig:
         self.is_file = False
         self.bot_trans = False
         self.user_trans = False
+        self.is_rss = getattr(self.message, "_rss_trigger", False)
         self.progress = True
         self.ffmpeg_cmds = None
         self.metadata_title = None
@@ -540,9 +541,7 @@ class TaskConfig:
                 if is_telegram_link(self.thumb):
                     msg = (await get_tg_link_message(self.thumb))[0]
                     self.thumb = (
-                        await create_thumb(msg)
-                        if msg.photo or msg.document
-                        else ""
+                        await create_thumb(msg) if msg.photo or msg.document else ""
                     )
                 elif self.thumb.startswith("http"):
                     self.thumb = await download_image_thumb(self.thumb)

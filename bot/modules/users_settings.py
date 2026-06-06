@@ -559,6 +559,8 @@ async def get_user_settings(from_user, stype="main"):
 ┠ Leech by <b>{leech_method}</b> session
 ┠ Mixed Leech → <b>{hybrid_leech}</b>
 ┖ Thumbnail Layout → <b>{thumb_layout}</b>
+
+<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>
 """
 
     elif stype == "uphoster":

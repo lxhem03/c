@@ -1,12 +1,13 @@
 from asyncio import wait_for, Event, sleep
 from functools import partial
+from pyrogram.enums import ButtonStyle
 from pyrogram.filters import regex, user
 from pyrogram.handlers import CallbackQueryHandler
 from time import time
 from aiofiles.os import path as aiopath, remove
 from aiofiles import open as aiopen
 from base64 import b64encode
-from secrets import token_hex
+from secrets import token_urlsafe
 from myjd.exception import MYJDException
 
 from .... import (
@@ -75,8 +76,8 @@ class JDownloaderHelper:
     async def wait_for_configurations(self):
         buttons = ButtonMaker()
         buttons.url_button("Select", "https://my.jdownloader.org")
-        buttons.data_button("Done Selecting", "jdq sdone")
-        buttons.data_button("Cancel", "jdq cancel")
+        buttons.data_button("Done Selecting", "jdq sdone", style=ButtonStyle.SUCCESS)
+        buttons.data_button("Cancel", "jdq cancel", style=ButtonStyle.DANGER)
         button = buttons.build_menu(2)
         msg = f"Remove the unwanted files or change variants or edit files names from myJdownloader site for <b>{self.listener.name}</b>.\nDon't start it manually!\n\nAfter finish press Done Selecting!\nTimeout: 10 min"
         self._reply_to = await send_message(self.listener.message, msg, button)
@@ -120,7 +121,7 @@ async def get_jd_download_directory():
 async def add_jd_download(listener, path):
     try:
         async with jd_listener_lock:
-            gid = token_hex(5)
+            gid = token_urlsafe(12)
             if not jdownloader.is_connected:
                 raise MYJDException(jdownloader.error)
 
@@ -157,7 +158,8 @@ async def add_jd_download(listener, path):
                         {
                             "autoExtract": False,
                             "links": listener.link,
-                            "packageName": listener.name or None,
+                            "deepDecrypt": True,
+                            "overwritePackagizerRules": listener.join,
                         }
                     ],
                 )
@@ -199,13 +201,6 @@ async def add_jd_download(listener, path):
                         LOGGER.error(error)
                         corrupted_packages.append(pack["uuid"])
                         continue
-                    save_to = pack["saveTo"]
-                    if not name:
-                        if save_to.startswith(default_path):
-                            name = save_to.replace(default_path, "", 1).split("/", 1)[0]
-                        else:
-                            name = save_to.replace(f"{path}/", "", 1).split("/", 1)[0]
-                        name = name[:255]
 
                     if (
                         pack.get("tempUnknownCount", 0) > 0
@@ -216,6 +211,9 @@ async def add_jd_download(listener, path):
 
                     listener.size += pack.get("bytesTotal", 0)
                     online_packages.append(pack["uuid"])
+                    if not name:
+                        name = pack.get("name", "").replace("/", "").split("/")[0]
+                    save_to = pack["saveTo"]
                     if save_to.startswith(default_path):
                         save_to = trim_path(save_to)
                         await jdownloader.device.linkgrabber.set_download_directory(
@@ -224,14 +222,6 @@ async def add_jd_download(listener, path):
                         )
 
                 if online_packages:
-                    if listener.join and len(online_packages) > 1:
-                        listener.name = "Joined Packages"
-                        await jdownloader.device.linkgrabber.move_to_new_package(
-                            listener.name,
-                            f"{path}/{listener.name}",
-                            package_ids=online_packages,
-                        )
-                        continue
                     break
             else:
                 error = (

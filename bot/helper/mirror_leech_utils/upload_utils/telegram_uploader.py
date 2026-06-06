@@ -118,6 +118,7 @@ class TelegramUploader:
 ┠ <b>User :</b> {self._listener.user.mention} ( #ID{self._listener.user_id} ){f"\n┠ <b>Message Link :</b> <a href='{msg_link}'>Click Here</a>" if msg_link else ""}
 ┖ <b>Source :</b> <a href='{self._listener.source_url}'>Click Here</a>"""
             try:
+                await TgClient.bot.resolve_peer(self._listener.up_dest)
                 self._log_msg = await TgClient.bot.send_message(
                     chat_id=self._listener.up_dest,
                     text=msg,
@@ -230,7 +231,7 @@ class TelegramUploader:
                 cap_mono,
             )
 
-        if len(file_) > 56:
+        if len(file_) > 255:
             if is_archive(file_):
                 name = get_base_name(file_)
                 ext = file_.split(name, 1)[1]
@@ -245,7 +246,7 @@ class TelegramUploader:
                 ext = ""
             if self._lsuffix:
                 ext = f"{self._lsuffix}{ext}"
-            name = name[: 56 - len(ext)]
+            name = name[: 255 - len(ext)]
             file_ = f"{name}{ext}"
         elif self._lsuffix:
             name, ext = ospath.splitext(file_)

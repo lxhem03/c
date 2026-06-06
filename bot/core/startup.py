@@ -6,7 +6,6 @@ from aiofiles import open as aiopen
 from aiofiles.os import makedirs, remove, path as aiopath
 from aioshutil import rmtree
 
-from sabnzbdapi.exception import APIResponseError
 
 from .. import (
     LOGGER,
@@ -45,11 +44,13 @@ async def update_qb_options():
         for k in list(qbit_options.keys()):
             if k.startswith("rss"):
                 del qbit_options[k]
-        qbit_options["web_ui_password"] = "admin"
+        qbit_options["web_ui_password"] = "admin1"
         await TorrentManager.qbittorrent.app.set_preferences(
-            {"web_ui_password": "admin"}
+            {"web_ui_password": "admin1"}
         )
     else:
+        if qbit_options.get("web_ui_password") == "admin":
+            qbit_options["web_ui_password"] = "admin1"
         await TorrentManager.qbittorrent.app.set_preferences(qbit_options)
 
 

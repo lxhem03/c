@@ -203,7 +203,7 @@ def get_progress_bar_string(pct):
 
 
 async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=1):
-    msg = ""
+    msg = "<blockquote><a href='https://t.me/Animes_Guy'>𝑃𝑜𝑤𝑒𝑟𝑒𝑑 𝐵𝑦 𝐴𝑛𝑖𝑚𝑒𝑠 𝐺𝑢𝑦!!</a></blockquote>\n\n"
     button = None
 
     tasks = await get_specific_tasks(status, sid if is_user else None)
@@ -228,8 +228,7 @@ async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=
             tstatus = await task.status()
         else:
             tstatus = task.status()
-        msg += f"<b>{index + start_position}.</b> "
-        msg += f"<b><i>{escape(f'{task.name()}')}</i></b>"
+        msg += f"<blockquote><b>{index + start_position}.</b> <b><i>{escape(f'{task.name()}')}</i></b></blockquote>"
         if task.listener.subname:
             msg += f"\n┖ <b>Sub Name</b> → <i>{task.listener.subname}</i>"
         elapsed = time() - task.listener.message.date.timestamp()
@@ -311,6 +310,5 @@ async def get_readable_message(sid, is_user, page_no=1, status="All", page_step=
         "♻️ Refresh", f"status {sid} ref", position="header", style=ButtonStyle.PRIMARY
     )
     button = buttons.build_menu(8)
-    msg += f"\n┟ <b>CPU</b> → {cpu_percent()}% | <b>F</b> → {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)} [{round(100 - disk_usage(DOWNLOAD_DIR).percent, 1)}%]"
-    msg += f"\n┖ <b>RAM</b> → {virtual_memory().percent}% | <b>UP</b> → {get_readable_time(time() - bot_start_time)}"
+    msg += f"<blockquote>\n┟ <b>CPU</b> ~ {cpu_percent()}% | <b>RAM</b> ~ {virtual_memory().percent}%\n┟ <b>F</b> ~ {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)} [{round(100 - disk_usage(DOWNLOAD_DIR).percent, 1)}%]\n┖ <b>UP</b> → {get_readable_time(time() - bot_start_time)}</blockquote>"
     return msg, button

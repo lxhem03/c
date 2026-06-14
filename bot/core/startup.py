@@ -128,6 +128,14 @@ async def load_settings():
             if config_dict:
                 Config.load_dict(config_dict)
 
+        # Re-apply UPSTREAM_REPO and UPSTREAM_BRANCH from env if explicitly set,
+        # overriding whatever was stored in MongoDB.
+        for _key in ("UPSTREAM_REPO", "UPSTREAM_BRANCH"):
+            _env_val = environ.get(_key)
+            if _env_val is not None:
+                setattr(Config, _key, _env_val.strip())
+                LOGGER.info(f"Overriding {_key} from environment: {_env_val.strip()!r}")
+
         if pf_dict := await database.db.settings.files.find_one(
             {"_id": BOT_ID}, {"_id": 0}
         ):
